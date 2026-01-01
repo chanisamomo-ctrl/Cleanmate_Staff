@@ -133,9 +133,60 @@
 
   <script src="js/app.js"></script>
   <script>
-    document.getElementById("mockSave").addEventListener("click", () => {
-      document.getElementById("result").textContent = "✅ ฟอร์มพร้อมแล้ว (ยังไม่บันทึกฐานข้อมูล)";
-    });
+    <script>
+  function todayYMD() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  document.getElementById("mockSave").addEventListener("click", async () => {
+    try {
+      const data = {
+        branchId: document.getElementById("branch").value,
+        billNo: document.getElementById("billNo").value.trim(),
+        customerName: document.getElementById("customerName").value.trim(),
+        customerPhone: document.getElementById("customerPhone").value.trim(),
+        serviceType: document.getElementById("serviceType").value,
+        itemCount: Number(document.getElementById("itemCount").value || 0),
+
+        useCoupon: document.getElementById("useCoupon").checked,
+        couponUsedCount: Number(document.getElementById("couponUsedCount").value || 0),
+        couponBookSold: Number(document.getElementById("couponBookSold").value || 0),
+        couponKeepPlace: document.getElementById("couponKeepPlace").value || null,
+
+        grossAmount: Number(document.getElementById("grossAmount").value || 0),
+        discountAmount: Number(document.getElementById("discountAmount").value || 0),
+        netAmount: Number(document.getElementById("netAmount").value || 0),
+
+        paymentStatus: document.getElementById("paymentStatus").value,
+        paymentMethod: document.getElementById("paymentMethod").value || null,
+
+        businessDate: todayYMD(),
+        createdAt: new Date()
+      };
+
+      // ตรวจข้อมูลจำเป็น
+      if (!data.billNo || !data.customerPhone) {
+        document.getElementById("result").textContent =
+          "❌ กรุณากรอกเลขบิล และเบอร์โทร";
+        return;
+      }
+
+      await db.collection("transactions").add(data);
+
+      document.getElementById("result").textContent =
+        "✅ บันทึกบิลเรียบร้อยแล้ว";
+    } catch (err) {
+      console.error(err);
+      document.getElementById("result").textContent =
+        "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
+    }
+  });
+</script>
+
   </script>
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
