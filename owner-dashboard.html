@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Owner Dashboard | Cleanmate</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <a class="btn light" href="index.html">← กลับหน้าแรก</a>
+
+    <div class="card">
+      <h2>📊 Owner Dashboard (โครงร่าง)</h2>
+      <p class="small">ต่อไปจะเลือกช่วงเวลา/สาขา และดึงยอดจากฐานข้อมูล</p>
+
+      <div class="row">
+        <div>
+          <label>ช่วงเวลา</label>
+          <select>
+            <option>วันนี้</option>
+            <option>เดือนนี้</option>
+            <option>ปีนี้</option>
+            <option>กำหนดเอง</option>
+          </select>
+        </div>
+        <div>
+          <label>สาขา</label>
+          <select>
+            <option>ทั้งหมด</option>
+            <option>Chamchuri</option>
+            <option>Samyan Mitrtown</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:12px;">
+        <div class="card"><b>ยอดสุทธิ</b><div>0</div></div>
+        <div class="card"><b>จำนวนบิล</b><div>0</div></div>
+        <div class="card"><b>ค้างชำระ</b><div>0</div></div>
+        <div class="card"><b>ยกเลิก</b><div>0</div></div>
+      </div>
+
+      <button class="btn secondary" disabled>Export CSV (ทำในเฟสต่อไป)</button>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
