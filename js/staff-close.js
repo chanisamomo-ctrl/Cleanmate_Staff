@@ -3,84 +3,70 @@ document.addEventListener("DOMContentLoaded", () => {
   const branchEl = document.getElementById("branch");
   const dateEl = document.getElementById("date");
   const summaryEl = document.getElementById("summary");
-  const txListEl = document.getElementById("txList");
   const closeBtn = document.getElementById("closeBtn");
   const resultEl = document.getElementById("result");
   const closedByEl = document.getElementById("closedBy");
   const noteEl = document.getElementById("note");
 
+  const txListEl = document.getElementById("txList");
+
+  const toggleAmendBtn = document.getElementById("toggleAmendBtn");
+  const amendBox = document.getElementById("amendBox");
+  const amendBtn = document.getElementById("amendBtn");
+  const amendResultEl = document.getElementById("amendResult");
+
+  const amendTotalNetEl = document.getElementById("amendTotalNet");
+  const amendCashEl = document.getElementById("amendCash");
+  const amendTransferEl = document.getElementById("amendTransfer");
+  const amendUnpaidEl = document.getElementById("amendUnpaid");
+  const amendReasonEl = document.getElementById("amendReason");
+
+  // helper จาก app.js (ต้องมี todayYMD)
   const businessDate = todayYMD();
-  if (dateEl) dateEl.value = businessDate;
+  dateEl.value = businessDate;
 
   let unsubscribeTx = null;
-  let unsubscribeCloseDoc = null;
   let lastComputed = null;
+  let lastCloseDoc = null;
 
-  function toBranchKey(branchId) {
-    return String(branchId || "").replace(/\s+/g, "_");
+  function branchKey(branchId) {
+    return (branchId || "").replace(/\s+/g, "_");
   }
 
-  function closeDocId(branchKey, date) {
-    return `${branchKey}__${date}`;
+  function closeDocId(branchId, date) {
+    return `${branchKey(branchId)}__${date}`;
   }
 
-  function setClosedUI(isClosed) {
-    if (!closeBtn) return;
-    if (isClosed) {
-      closeBtn.disabled = true;
-      closeBtn.textContent = "✅ ปิดยอดแล้ว (ล็อกแล้ว)";
-    } else {
-      closeBtn.disabled = false;
-      closeBtn.textContent = "🔒 ปิดยอดวันนี้";
-    }
+  function money(n) {
+    return Number(n || 0).toLocaleString();
   }
 
-  function escapeHtml(s) {
-    return String(s || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
-  }
-
-  function renderList(items) {
-    if (!txListEl) return;
-
+  function renderTxList(items) {
     if (!items.length) {
       txListEl.innerHTML = `<div class="muted">ยังไม่มีรายการของวันนี้</div>`;
       return;
     }
 
-    txListEl.innerHTML = items.map((x) => {
-      const status =
-        x.paymentStatus === "paid" ? "ชำระแล้ว" :
-        x.paymentStatus === "unpaid" ? "ค้างชำระ" : "ยกเลิก";
-
-      const method =
-        x.paymentMethod === "cash" ? "เงินสด" :
-        x.paymentMethod === "transfer" ? "เงินโอน" : "-";
-
-      const service =
-        x.serviceType === "dry" ? "ซักแห้ง" :
-        x.serviceType === "wash" ? "ซักน้ำ" : "-";
+    txListEl.innerHTML = items.map((d) => {
+      const bill = d.billNo || "-";
+      const status = d.paymentStatus === "paid" ? "ชำระแล้ว" : (d.paymentStatus === "unpaid" ? "ค้างชำระ" : "ยกเลิก");
+      const method = d.paymentMethod === "cash" ? "เงินสด" : (d.paymentMethod === "transfer" ? "โอน" : "-");
+      const svc = d.serviceType === "dry" ? "ซักแห้ง" : (d.serviceType === "wash" ? "ซักน้ำ" : "-");
+      const name = d.customerName || "-";
+      const phone = d.customerPhone || "-";
+      const net = money(d.netAmount || 0);
 
       return `
-        <div style="border:1px solid #eee; border-radius:12px; padding:10px; margin:8px 0; background:#fff;">
-          <div style="display:flex; justify-content:space-between; gap:12px;">
+        <div class="card" style="margin:8px 0;">
+          <div class="row" style="align-items:center;">
             <div>
-              <b>บิล:</b> ${escapeHtml(x.billNo || "-")}
-              <span style="margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd;">
-                ${escapeHtml(status)}
-              </span>
-              <div class="muted" style="margin-top:4px;">
-                ลูกค้า: ${escapeHtml(x.customerName || "-")} (${escapeHtml(x.customerPhone || "-")})
-              </div>
-              <div class="muted">
-                บริการ: ${escapeHtml(service)} • ชิ้น: ${Number(x.itemCount || 0)} • วิธีชำระ: ${escapeHtml(method)}
-              </div>
+              <b>บิล:</b> ${bill} <span class="badge">${status}</span><br/>
+              <span class="muted">ลูกค้า:</span> ${name} (${phone})<br/>
+              <span class="muted">บริการ:</span> ${svc} • <span class="muted">ชิ้น:</span> ${Number(d.itemCount||0)} • <span class="muted">วิธีชำระ:</span> ${method}
             </div>
-            <div style="text-align:right; min-width:120px;">
-              <div><b>สุทธิ:</b> ${Number(x.netAmount || 0).toLocaleString()} บาท</div>
-              <div class="muted" style="margin-top:4px;">${escapeHtml(x.businessDate || "")}</div>
+            <div style="text-align:right;">
+              <b>สุทธิ: ${net} บาท</b><br/>
+              <span class="muted">${d.businessDate || "-"}</span>
             </div>
           </div>
         </div>
@@ -88,56 +74,82 @@ document.addEventListener("DOMContentLoaded", () => {
     }).join("");
   }
 
+  function setAmendInputsFromCloseDoc(docData) {
+    // เอาค่าปัจจุบันมาใส่ช่องแก้ไข (ให้แก้เฉพาะยอด)
+    amendTotalNetEl.value = Number(docData?.totalNet || 0);
+    amendCashEl.value = Number(docData?.cashTotal || 0);
+    amendTransferEl.value = Number(docData?.transferTotal || 0);
+    amendUnpaidEl.value = Number(docData?.unpaidTotal || 0);
+    amendReasonEl.value = "";
+  }
+
   function startRealtime() {
     if (unsubscribeTx) unsubscribeTx();
-    if (unsubscribeCloseDoc) unsubscribeCloseDoc();
+    lastComputed = null;
+    lastCloseDoc = null;
 
-    if (summaryEl) summaryEl.textContent = "กำลังโหลด...";
-    if (txListEl) txListEl.textContent = "กำลังโหลดรายการ...";
-    if (resultEl) resultEl.textContent = "";
+    summaryEl.textContent = "กำลังโหลด...";
+    txListEl.textContent = "กำลังโหลดรายการ...";
+    resultEl.textContent = "";
+    amendResultEl.textContent = "";
+    amendBox.style.display = "none";
+    toggleAmendBtn.style.display = "none";
 
-    const branchId = branchEl ? branchEl.value : "";
-    const branchKey = toBranchKey(branchId);
-    const closeId = closeDocId(branchKey, businessDate);
+    const branchId = branchEl.value;
+    const docId = closeDocId(branchId, businessDate);
 
-    // 1) เช็คว่าปิดยอดแล้วหรือยัง
-    unsubscribeCloseDoc = db.collection("daily_closes").doc(closeId).onSnapshot((doc) => {
-      if (!summaryEl) return;
-
+    // 1) โหลด close doc (ถ้ามี)
+    db.collection("daily_closes").doc(docId).onSnapshot((doc) => {
       if (doc.exists) {
         const d = doc.data();
+        lastCloseDoc = d;
+
         summaryEl.innerHTML =
           `✅ <b>ปิดยอดแล้ว</b><br/>
-           สาขา: <b>${d.branchId || "-"}</b> • วันที่: <b>${d.businessDate || businessDate}</b><br/>
-           บิล: <b>${Number(d.totalBills || 0).toLocaleString()}</b> • สุทธิรวม: <b>${Number(d.totalNet || 0).toLocaleString()}</b> บาท<br/>
-           เงินสด: <b>${Number(d.cashTotal || 0).toLocaleString()}</b> • โอน: <b>${Number(d.transferTotal || 0).toLocaleString()}</b> • ค้างชำระ: <b>${Number(d.unpaidTotal || 0).toLocaleString()}</b><br/>
-           ปิดโดย: <b>${d.closedBy || "-"}</b> • เวลา: <b>${d.closedAt?.toDate ? d.closedAt.toDate().toLocaleString() : "-"}</b>`;
-        setClosedUI(true);
+           สาขา: <b>${d.branchId}</b> • วันที่: <b>${d.businessDate}</b><br/>
+           บิล: <b>${d.totalBills}</b> • สุทธิรวม: <b>${money(d.totalNet)}</b> บาท<br/>
+           เงินสด: <b>${money(d.cashTotal)}</b> • โอน: <b>${money(d.transferTotal)}</b> • ค้างชำระ: <b>${money(d.unpaidTotal)}</b><br/>
+           ปิดโดย: <b>${d.closedBy || "-"}</b> • เวลา: <b>${d.closedAt?.toDate ? d.closedAt.toDate().toLocaleString() : "-"}</b>
+           ${d.amendedAt?.toDate ? `<br/>✏️ แก้ไขล่าสุด: <b>${d.amendedAt.toDate().toLocaleString()}</b> โดย <b>${d.amendedBy || "-"}</b>` : ""}`;
+
+        closeBtn.disabled = true;
+        closeBtn.textContent = "✅ ปิดยอดแล้ว (ล็อกแล้ว)";
+
+        // เปิดปุ่มขอแก้ไขยอด
+        toggleAmendBtn.style.display = "inline-block";
+        setAmendInputsFromCloseDoc(d);
       } else {
-        setClosedUI(false);
+        summaryEl.innerHTML =
+          `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>กำลังคำนวณจากรายการ...`;
+
+        closeBtn.disabled = false;
+        closeBtn.textContent = "🔒 ปิดยอดวันนี้";
+        toggleAmendBtn.style.display = "none";
+        amendBox.style.display = "none";
       }
     });
 
-    // 2) ดึงรายการวันนี้ของสาขานั้น (ใช้ branchId ให้ตรงกับข้อมูลเดิม)
+    // 2) โหลดรายการ transactions ของวันนี้ + สาขานี้ แบบ realtime (เพื่อให้ยอด “ตรงกับรายการวันนี้”)
     const q = db.collection("transactions")
       .where("businessDate", "==", businessDate)
       .where("branchId", "==", branchId);
 
     unsubscribeTx = q.onSnapshot((snap) => {
+      const items = [];
       let totalBills = 0;
       let totalNet = 0;
       let cashTotal = 0;
       let transferTotal = 0;
       let unpaidTotal = 0;
 
-      const items = [];
-
       snap.forEach((doc) => {
         const d = doc.data();
-        items.push({ id: doc.id, ...d });
+        items.push(d);
+
+        // ถ้าบิลถูกยกเลิก จะไม่นับเข้ายอด
+        if (d.paymentStatus === "cancelled") return;
 
         totalBills += 1;
-
         const net = Number(d.netAmount || 0);
         totalNet += net;
 
@@ -149,78 +161,143 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // เรียงล่าสุดก่อน (ถ้ามี createdAt เป็น Timestamp)
-      items.sort((a, b) => {
-        const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-        const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-        return tb - ta;
-      });
+      // เรียงรายการตามเลขบิล (ถ้าต้องการ)
+      items.sort((a, b) => String(a.billNo || "").localeCompare(String(b.billNo || "")));
 
-      lastComputed = {
-        branchId,
-        branchKey,
-        businessDate,
-        totalBills,
-        totalNet,
-        cashTotal,
-        transferTotal,
-        unpaidTotal
-      };
+      lastComputed = { branchId, businessDate, totalBills, totalNet, cashTotal, transferTotal, unpaidTotal };
+      renderTxList(items);
 
-      if (summaryEl) {
+      // ถ้ายังไม่ปิดยอด ให้โชว์ summary จาก computed
+      if (!lastCloseDoc) {
         summaryEl.innerHTML =
           `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>
-           จำนวนบิล: <b>${totalBills.toLocaleString()}</b><br/>
-           ยอดสุทธิรวม: <b>${totalNet.toLocaleString()}</b> บาท<br/>
-           เงินสด: <b>${cashTotal.toLocaleString()}</b> • โอน: <b>${transferTotal.toLocaleString()}</b> • ค้างชำระ: <b>${unpaidTotal.toLocaleString()}</b>`;
+           จำนวนบิล: <b>${totalBills}</b><br/>
+           ยอดสุทธิรวม: <b>${money(totalNet)}</b> บาท<br/>
+           เงินสด: <b>${money(cashTotal)}</b> • โอน: <b>${money(transferTotal)}</b> • ค้างชำระ: <b>${money(unpaidTotal)}</b>`;
       }
-
-      renderList(items);
     }, (err) => {
       console.error(err);
-      if (summaryEl) summaryEl.textContent = "❌ โหลดสรุปยอดไม่สำเร็จ (เช็ค Rules/Index)";
-      if (txListEl) txListEl.textContent = "❌ โหลดรายการไม่สำเร็จ";
+      summaryEl.textContent = "❌ โหลดข้อมูลไม่สำเร็จ (เช็ค Rules/Index)";
+      txListEl.textContent = "❌ โหลดรายการไม่สำเร็จ";
     });
   }
 
-  if (closeBtn) {
-    closeBtn.addEventListener("click", async () => {
-      try {
-        if (!lastComputed) {
-          if (resultEl) resultEl.textContent = "❌ ยังโหลดสรุปยอดไม่พร้อม กรุณารอสักครู่";
-          return;
-        }
+  // ปิดยอด
+  closeBtn.addEventListener("click", async () => {
+    try {
+      if (!lastComputed) {
+        resultEl.textContent = "❌ ยังโหลดสรุปยอดไม่พร้อม กรุณารอสักครู่";
+        return;
+      }
 
-        const branchId = branchEl ? branchEl.value : "";
-        const branchKey = toBranchKey(branchId);
-        const closeId = closeDocId(branchKey, businessDate);
+      const branchId = branchEl.value;
+      const docId = closeDocId(branchId, businessDate);
 
-        closeBtn.disabled = true;
-        if (resultEl) resultEl.textContent = "⏳ กำลังปิดยอด...";
+      closeBtn.disabled = true;
+      resultEl.textContent = "⏳ กำลังปิดยอด...";
 
-        await db.runTransaction(async (tx) => {
-          const ref = db.collection("daily_closes").doc(closeId);
-          const snap = await tx.get(ref);
-          if (snap.exists) throw new Error("วันนี้สาขานี้ปิดยอดแล้ว");
+      await db.runTransaction(async (tx) => {
+        const ref = db.collection("daily_closes").doc(docId);
+        const snap = await tx.get(ref);
+        if (snap.exists) throw new Error("วันนี้สาขานี้ปิดยอดแล้ว");
 
-          tx.set(ref, {
-            ...lastComputed,
-            closedBy: (closedByEl?.value || "").trim() || null,
-            note: (noteEl?.value || "").trim() || null,
-            closedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
+        tx.set(ref, {
+          ...lastComputed,
+          branchKey: branchKey(branchId),
+          closedBy: (closedByEl.value || "").trim() || null,
+          note: (noteEl.value || "").trim() || null,
+          closedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      resultEl.textContent = "✅ ปิดยอดเรียบร้อยแล้ว (ล็อกแล้ว)";
+      closeBtn.textContent = "✅ ปิดยอดแล้ว (ล็อกแล้ว)";
+    } catch (err) {
+      console.error(err);
+      resultEl.textContent = `❌ ปิดยอดไม่สำเร็จ: ${err.message || err}`;
+      closeBtn.disabled = false;
+    }
+  });
+
+  // toggle กล่องแก้ไขยอด
+  toggleAmendBtn.addEventListener("click", () => {
+    amendBox.style.display = (amendBox.style.display === "none") ? "block" : "none";
+    amendResultEl.textContent = "";
+  });
+
+  // แก้ไขยอด (เก็บประวัติ + บังคับเหตุผล)
+  amendBtn.addEventListener("click", async () => {
+    try {
+      const branchId = branchEl.value;
+      const docId = closeDocId(branchId, businessDate);
+      const reason = (amendReasonEl.value || "").trim();
+
+      if (!reason) {
+        amendResultEl.textContent = "❌ กรุณากรอกเหตุผลในการแก้ไข";
+        return;
+      }
+
+      amendBtn.disabled = true;
+      amendResultEl.textContent = "⏳ กำลังบันทึกการแก้ไข...";
+
+      await db.runTransaction(async (tx) => {
+        const closeRef = db.collection("daily_closes").doc(docId);
+        const snap = await tx.get(closeRef);
+
+        if (!snap.exists) throw new Error("ยังไม่ได้ปิดยอดของวันนี้ จึงแก้ไขไม่ได้");
+
+        const before = snap.data();
+
+        // ค่าที่แก้ไข
+        const after = {
+          totalNet: Number(amendTotalNetEl.value || 0),
+          cashTotal: Number(amendCashEl.value || 0),
+          transferTotal: Number(amendTransferEl.value || 0),
+          unpaidTotal: Number(amendUnpaidEl.value || 0)
+        };
+
+        // เก็บประวัติ (before -> after) ใน subcollection
+        const amendRef = closeRef.collection("amendments").doc();
+        tx.set(amendRef, {
+          branchId,
+          businessDate,
+          reason,
+          amendedBy: (closedByEl.value || "").trim() || null,
+          amendedNote: (noteEl.value || "").trim() || null,
+          before: {
+            totalBills: Number(before.totalBills || 0),
+            totalNet: Number(before.totalNet || 0),
+            cashTotal: Number(before.cashTotal || 0),
+            transferTotal: Number(before.transferTotal || 0),
+            unpaidTotal: Number(before.unpaidTotal || 0),
+            closedBy: before.closedBy || null,
+            closedAt: before.closedAt || null
+          },
+          after,
+          amendedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        if (resultEl) resultEl.textContent = "✅ ปิดยอดเรียบร้อยแล้ว (ล็อกแล้ว)";
-        setClosedUI(true);
-      } catch (err) {
-        console.error(err);
-        if (resultEl) resultEl.textContent = `❌ ปิดยอดไม่สำเร็จ: ${err.message || err}`;
-        setClosedUI(false);
-      }
-    });
-  }
+        // อัปเดตยอดล่าสุดบน daily_closes (เพื่อให้หน้าอื่นอ่าน “ยอดล่าสุด” ได้เลย)
+        tx.update(closeRef, {
+          ...after,
+          amendedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          amendedBy: (closedByEl.value || "").trim() || null,
+          amendedReason: reason
+        });
+      });
 
-  if (branchEl) branchEl.addEventListener("change", startRealtime);
+      amendResultEl.textContent = "✅ บันทึกการแก้ไขแล้ว (เก็บประวัติเรียบร้อย)";
+      amendReasonEl.value = "";
+    } catch (err) {
+      console.error(err);
+      amendResultEl.textContent = `❌ แก้ไขไม่สำเร็จ: ${err.message || err}`;
+    } finally {
+      amendBtn.disabled = false;
+    }
+  });
+
+  // เปลี่ยนสาขา
+  branchEl.addEventListener("change", startRealtime);
+
   startRealtime();
 });
