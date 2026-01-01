@@ -1,4 +1,6 @@
-// js/staff-new.js
+// ===============================
+// helper: วันที่รูปแบบ YYYY-MM-DD
+// ===============================
 function todayYMD() {
   const d = new Date();
   const y = d.getFullYear();
@@ -6,12 +8,22 @@ function todayYMD() {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("saveBtn");
-  const result = document.getElementById("result");
 
-  btn.addEventListener("click", async () => {
+// ===============================
+// main logic: เพิ่มบิล
+// ===============================
+document.addEventListener("DOMContentLoaded", () => {
+  const saveBtn = document.getElementById("saveBtn");
+  const resultEl = document.getElementById("result");
+
+  if (!saveBtn) {
+    console.error("❌ ไม่พบปุ่มบันทึก (saveBtn)");
+    return;
+  }
+
+  saveBtn.addEventListener("click", async () => {
     try {
+      // ดึงค่าจากฟอร์ม
       const data = {
         branchId: document.getElementById("branch").value,
         billNo: document.getElementById("billNo").value.trim(),
@@ -36,25 +48,31 @@ document.addEventListener("DOMContentLoaded", () => {
         createdAt: new Date()
       };
 
+      // ตรวจข้อมูลจำเป็น
       if (!data.billNo || !data.customerPhone) {
-        result.textContent = "❌ กรุณากรอกเลขบิลและเบอร์โทร";
+        resultEl.textContent = "❌ กรุณากรอกเลขบิล และเบอร์โทร";
         return;
       }
 
-      btn.disabled = true;
-      result.textContent = "กำลังบันทึก...";
+      // ป้องกันกดซ้ำ
+      saveBtn.disabled = true;
+      resultEl.textContent = "⏳ กำลังบันทึกข้อมูล...";
 
+      // บันทึก Firestore
       await db.collection("transactions").add(data);
 
-      result.textContent = "✅ บันทึกเรียบร้อยแล้ว";
-      btn.disabled = false;
+      resultEl.textContent = "✅ บันทึกบิลเรียบร้อยแล้ว";
+      saveBtn.disabled = false;
 
-      // (ไม่บังคับ) เคลียร์บางช่อง
+      // (ไม่บังคับ) reset บางช่อง
       // document.getElementById("billNo").value = "";
+      // document.getElementById("customerName").value = "";
+      // document.getElementById("customerPhone").value = "";
+
     } catch (err) {
       console.error(err);
-      result.textContent = "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
-      btn.disabled = false;
+      resultEl.textContent = "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
+      saveBtn.disabled = false;
     }
   });
 });
