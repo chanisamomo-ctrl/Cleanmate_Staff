@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // ดึงค่าจากฟอร์ม
       const data = {
         branchId: document.getElementById("branch").value,
+        branchKey: document.getElementById("branch").value.replace(/\s+/g, "_"),
         billNo: document.getElementById("billNo").value.trim(),
         customerName: document.getElementById("customerName").value.trim(),
         customerPhone: document.getElementById("customerPhone").value.trim(),
