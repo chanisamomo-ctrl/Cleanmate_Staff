@@ -11,7 +11,7 @@
     <a class="btn light" href="index.html">← กลับหน้าแรก</a>
 
     <div class="card">
-      <h2>📋 รายการวันนี้</h2>
+      <h2>📋 รายการวันนี้ (Realtime)</h2>
 
       <div class="row">
         <div>
@@ -23,13 +23,21 @@
           </select>
         </div>
         <div>
-          <label>สรุป</label>
-          <input id="summaryBox" disabled value="-" />
+          <label>กรองสถานะชำระ</label>
+          <select id="payFilter">
+            <option value="ALL">ทั้งหมด</option>
+            <option value="paid">ชำระแล้ว</option>
+            <option value="unpaid">ค้างชำระ</option>
+            <option value="cancelled">ยกเลิก</option>
+          </select>
         </div>
       </div>
 
-      <p class="small" id="summary">กำลังโหลด...</p>
-      <div id="list"></div>
+      <div class="card" style="margin-top:12px;">
+        <div id="summary" class="small">กำลังโหลด...</div>
+      </div>
+
+      <div id="list" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -46,13 +54,5 @@
 
   <!-- Page logic -->
   <script src="js/staff-today.js"></script>
-
-  <script>
-    // sync summary text into the disabled input (optional)
-    const summaryEl = document.getElementById("summary");
-    const box = document.getElementById("summaryBox");
-    const obs = new MutationObserver(() => box.value = summaryEl.textContent);
-    obs.observe(summaryEl, { childList: true });
-  </script>
 </body>
 </html>
