@@ -11,21 +11,48 @@
     <a class="btn light" href="index.html">← กลับหน้าแรก</a>
 
     <div class="card">
-      <h2>📋 รายการวันนี้ (โครงร่าง)</h2>
-      <p class="small">ต่อไปจะดึงจาก Firestore ตามสาขาและวันที่</p>
+      <h2>📋 รายการวันนี้</h2>
 
-      <div class="card">
-        <div><b>บิล:</b> CM-000123 <span class="badge">ค้างชำระ</span></div>
-        <div class="small">ลูกค้า: A / 08x-xxx-xxxx • สุทธิ: 350 บาท</div>
+      <div class="row">
+        <div>
+          <label>กรองสาขา</label>
+          <select id="branchFilter">
+            <option value="ALL">ทั้งหมด</option>
+            <option value="Chamchuri">Chamchuri</option>
+            <option value="Samyan Mitrtown">Samyan Mitrtown</option>
+          </select>
+        </div>
+        <div>
+          <label>สรุป</label>
+          <input id="summaryBox" disabled value="-" />
+        </div>
       </div>
 
-      <div class="card">
-        <div><b>บิล:</b> CM-000124</div>
-        <div class="small">ลูกค้า: B / 09x-xxx-xxxx • สุทธิ: 220 บาท</div>
-      </div>
+      <p class="small" id="summary">กำลังโหลด...</p>
+      <div id="list"></div>
     </div>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-storage-compat.js"></script>
+
+  <!-- Init Firebase -->
+  <script src="js/firebase.js"></script>
+
+  <!-- Helpers -->
   <script src="js/app.js"></script>
+
+  <!-- Page logic -->
+  <script src="js/staff-today.js"></script>
+
+  <script>
+    // sync summary text into the disabled input (optional)
+    const summaryEl = document.getElementById("summary");
+    const box = document.getElementById("summaryBox");
+    const obs = new MutationObserver(() => box.value = summaryEl.textContent);
+    obs.observe(summaryEl, { childList: true });
+  </script>
 </body>
 </html>
