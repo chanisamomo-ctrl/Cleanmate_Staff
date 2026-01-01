@@ -185,9 +185,6 @@
         "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
     }
   });
-</script>
-
-  </script>
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
@@ -196,5 +193,12 @@
 <!-- Firebase config ของเรา -->
 <script src="js/firebase.js"></script>
 
-</body>
-</html>
+<!-- JS ส่วนกลาง -->
+<script src="js/app.js"></script>
+
+<!-- โค้ดปุ่มบันทึก (ยังเป็นตัวอย่างก่อน) -->
+<script>
+  document.getElementById("mockSave").addEventListener("click", async () => {
+    document.getElementById("result").textContent = "✅ กดปุ่มได้แล้ว (ต่อไปจะบันทึก Firestore)";
+  });
+</script>
