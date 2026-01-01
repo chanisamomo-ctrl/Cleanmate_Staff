@@ -1,212 +1,9 @@
-<!doctype html>
-<html lang="th">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>เพิ่มบิล | Cleanmate Staff</title>
-  <link rel="stylesheet" href="css/style.css" />
-</head>
-<body>
-  <div class="container">
-    <a class="btn light" href="index.html">← กลับหน้าแรก</a>
+// js/staff-new.js
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("saveBtn");
+  const result = document.getElementById("result");
 
-    <div class="card">
-      <h2>➕ เพิ่มบิล (โครงร่าง)</h2>
-      <p class="small">หน้านี้ยังไม่บันทึกจริง — แค่จัดวางฟอร์มก่อน</p>
-
-      <div class="row">
-        <div>
-          <label>สาขา</label>
-          <select id="branch">
-            <option value="Chamchuri">Chamchuri</option>
-            <option value="Samyan Mitrtown">Samyan Mitrtown</option>
-          </select>
-        </div>
-        <div>
-          <label>เลขที่บิล</label>
-          <input id="billNo" placeholder="เช่น CM-000123" />
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>ชื่อลูกค้า</label>
-          <input id="customerName" placeholder="ชื่อ-นามสกุล" />
-        </div>
-        <div>
-          <label>เบอร์โทร</label>
-          <input id="customerPhone" placeholder="0xxxxxxxxx" />
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>ประเภทบริการ</label>
-          <select id="serviceType">
-            <option value="dry">ซักแห้ง</option>
-            <option value="wash">ซักน้ำ</option>
-          </select>
-        </div>
-        <div>
-          <label>จำนวนชิ้น</label>
-          <input id="itemCount" type="number" min="0" />
-        </div>
-      </div>
-
-      <hr />
-
-      <label><input type="checkbox" id="useCoupon" /> ใช้คูปอง (สำหรับซักน้ำ)</label>
-
-      <div class="row">
-        <div>
-          <label>จำนวนคูปองที่ใช้ (ใบ)</label>
-          <input id="couponUsedCount" type="number" min="0" value="0" />
-        </div>
-        <div>
-          <label>ซื้อคูปอง (เล่ม)</label>
-          <input id="couponBookSold" type="number" min="0" value="0" />
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>คูปองเก็บไว้</label>
-          <select id="couponKeepPlace">
-            <option value="">-</option>
-            <option value="store">ฝากไว้กับหน้าร้าน</option>
-            <option value="customer">ลูกค้าเก็บเอง</option>
-          </select>
-        </div>
-        <div>
-          <label>คูปองคงเหลือ (ตัวอย่าง)</label>
-          <input id="couponBalance" disabled value="(คำนวณภายหลัง)" />
-        </div>
-      </div>
-
-      <hr />
-
-      <div class="row">
-        <div>
-          <label>ราคารวม (บาท)</label>
-          <input id="grossAmount" type="number" min="0" />
-        </div>
-        <div>
-          <label>ส่วนลด (บาท)</label>
-          <input id="discountAmount" type="number" min="0" value="0" />
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>สุทธิหลังหักส่วนลด (บาท)</label>
-          <input id="netAmount" type="number" min="0" />
-        </div>
-        <div>
-          <label>สถานะชำระ</label>
-          <select id="paymentStatus">
-            <option value="paid">ชำระแล้ว</option>
-            <option value="unpaid">ค้างชำระ</option>
-            <option value="cancelled">ยกเลิกบิล</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>วิธีชำระ</label>
-          <select id="paymentMethod">
-            <option value="">-</option>
-            <option value="cash">เงินสด</option>
-            <option value="transfer">เงินโอน</option>
-          </select>
-        </div>
-        <div>
-          <label>แนบสลิป (ยังไม่ทำ)</label>
-          <input type="file" disabled />
-        </div>
-      </div>
-
-      <button class="btn secondary" id="mockSave">บันทึก (ตัวอย่าง)</button>
-      <p class="small" id="result"></p>
-    </div>
-  </div>
-
-  <script src="js/app.js"></script>
-  <script>
-    <script>
-  function todayYMD() {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  document.getElementById("mockSave").addEventListener("click", async () => {
-    try {
-      const data = {
-        branchId: document.getElementById("branch").value,
-        billNo: document.getElementById("billNo").value.trim(),
-        customerName: document.getElementById("customerName").value.trim(),
-        customerPhone: document.getElementById("customerPhone").value.trim(),
-        serviceType: document.getElementById("serviceType").value,
-        itemCount: Number(document.getElementById("itemCount").value || 0),
-
-        useCoupon: document.getElementById("useCoupon").checked,
-        couponUsedCount: Number(document.getElementById("couponUsedCount").value || 0),
-        couponBookSold: Number(document.getElementById("couponBookSold").value || 0),
-        couponKeepPlace: document.getElementById("couponKeepPlace").value || null,
-
-        grossAmount: Number(document.getElementById("grossAmount").value || 0),
-        discountAmount: Number(document.getElementById("discountAmount").value || 0),
-        netAmount: Number(document.getElementById("netAmount").value || 0),
-
-        paymentStatus: document.getElementById("paymentStatus").value,
-        paymentMethod: document.getElementById("paymentMethod").value || null,
-
-        businessDate: todayYMD(),
-        createdAt: new Date()
-      };
-
-      // ตรวจข้อมูลจำเป็น
-      if (!data.billNo || !data.customerPhone) {
-        document.getElementById("result").textContent =
-          "❌ กรุณากรอกเลขบิล และเบอร์โทร";
-        return;
-      }
-
-      await db.collection("transactions").add(data);
-
-      document.getElementById("result").textContent =
-        "✅ บันทึกบิลเรียบร้อยแล้ว";
-    } catch (err) {
-      console.error(err);
-      document.getElementById("result").textContent =
-        "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
-    }
-  });
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-storage-compat.js"></script>
-
-<!-- Firebase config ของเรา (สร้าง db ที่นี่) -->
-<script src="js/firebase.js"></script>
-
-<!-- JS ส่วนกลาง -->
-<script src="js/app.js"></script>
-
-<!-- โค้ดปุ่มบันทึก -->
-<script>
-  function todayYMD() {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,'0');
-    const day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  }
-
-  document.getElementById("mockSave").addEventListener("click", async () => {
+  btn.addEventListener("click", async () => {
     try {
       const data = {
         branchId: document.getElementById("branch").value,
@@ -233,16 +30,24 @@
       };
 
       if (!data.billNo || !data.customerPhone) {
-        document.getElementById("result").textContent = "❌ กรุณากรอกเลขบิลและเบอร์โทร";
+        result.textContent = "❌ กรุณากรอกเลขบิลและเบอร์โทร";
         return;
       }
 
+      btn.disabled = true;
+      result.textContent = "กำลังบันทึก...";
+
       await db.collection("transactions").add(data);
-      document.getElementById("result").textContent = "✅ บันทึกเรียบร้อยแล้ว";
+
+      result.textContent = "✅ บันทึกเรียบร้อยแล้ว";
+      btn.disabled = false;
+
+      // (ไม่บังคับ) เคลียร์บางช่อง
+      // document.getElementById("billNo").value = "";
     } catch (err) {
       console.error(err);
-      document.getElementById("result").textContent = "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
+      result.textContent = "❌ เกิดข้อผิดพลาด กรุณาลองใหม่";
+      btn.disabled = false;
     }
   });
-</script>
-</body>
+});
