@@ -1,17 +1,17 @@
-// js/staff-close.js (branchKey version)
-// ปิดยอดรายวันแยกสาขา + สร้างเอกสาร daily_closes: <branchKey>__<YYYY-MM-DD>
-// เมื่อปิดยอดแล้ว Firestore Rules จะล็อกไม่ให้สร้างบิลย้อนหลังวัน/สาขานั้น
+// js/staff-close.js
+// - Summary & list computed from: transactions where businessDate == today AND branchId == selected
+// - Close doc id: <branchKey>__<YYYY-MM-DD>
 
 document.addEventListener("DOMContentLoaded", () => {
   const branchEl = document.getElementById("branch");
   const dateEl = document.getElementById("date");
   const summaryEl = document.getElementById("summary");
+  const txListEl = document.getElementById("txList");
   const closeBtn = document.getElementById("closeBtn");
   const resultEl = document.getElementById("result");
   const closedByEl = document.getElementById("closedBy");
   const noteEl = document.getElementById("note");
 
-  // ใช้ helper จาก app.js
   const businessDate = todayYMD();
   dateEl.value = businessDate;
 
@@ -37,134 +37,70 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function startRealtimeSummary() {
-    // ยกเลิก listener เก่า
+  function escapeHtml(s) {
+    return String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function renderList(items) {
+    if (!items.length) {
+      txListEl.innerHTML = `<div class="muted">ยังไม่มีรายการของวันนี้</div>`;
+      return;
+    }
+
+    txListEl.innerHTML = items.map((x) => {
+      const status = x.paymentStatus === "paid" ? "ชำระแล้ว"
+        : (x.paymentStatus === "unpaid" ? "ค้างชำระ" : "ยกเลิก");
+      const method = x.paymentMethod === "cash" ? "เงินสด"
+        : (x.paymentMethod === "transfer" ? "เงินโอน" : "-");
+      const service = x.serviceType === "dry" ? "ซักแห้ง"
+        : (x.serviceType === "wash" ? "ซักน้ำ" : "-");
+
+      return `
+        <div style="border:1px solid #eee; border-radius:12px; padding:10px; margin:8px 0; background:#fff;">
+          <div style="display:flex; justify-content:space-between; gap:12px;">
+            <div>
+              <b>บิล:</b> ${escapeHtml(x.billNo || "-")}
+              <span style="margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd;">
+                ${escapeHtml(status)}
+              </span>
+              <div class="muted" style="margin-top:4px;">
+                ลูกค้า: ${escapeHtml(x.customerName || "-")} (${escapeHtml(x.customerPhone || "-")})
+              </div>
+              <div class="muted">
+                บริการ: ${escapeHtml(service)} • ชิ้น: ${Number(x.itemCount || 0)} • วิธีชำระ: ${escapeHtml(method)}
+              </div>
+            </div>
+            <div style="text-align:right; min-width:120px;">
+              <div><b>สุทธิ:</b> ${Number(x.netAmount || 0).toLocaleString()} บาท</div>
+              <div class="muted" style="margin-top:4px;">${escapeHtml(x.businessDate || "")}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function startRealtime() {
     if (unsubscribeTx) unsubscribeTx();
     if (unsubscribeCloseDoc) unsubscribeCloseDoc();
 
     summaryEl.textContent = "กำลังโหลด...";
+    txListEl.textContent = "กำลังโหลดรายการ...";
     resultEl.textContent = "";
 
     const branchId = branchEl.value;
     const branchKey = toBranchKey(branchId);
-    const docId = closeDocId(branchKey, businessDate);
+    const closeId = closeDocId(branchKey, businessDate);
 
-    // 1) ฟังเอกสารปิดยอด เพื่อ disable ปุ่มทันทีถ้าปิดแล้ว
-    unsubscribeCloseDoc = db.collection("daily_closes").doc(docId).onSnapshot((doc) => {
+    // 1) เช็คว่า “ปิดยอดแล้วหรือยัง”
+    unsubscribeCloseDoc = db.collection("daily_closes").doc(closeId).onSnapshot((doc) => {
       if (doc.exists) {
         const d = doc.data();
         summaryEl.innerHTML =
           `✅ <b>ปิดยอดแล้ว</b><br/>
            สาขา: <b>${d.branchId || "-"}</b> • วันที่: <b>${d.businessDate || businessDate}</b><br/>
            บิล: <b>${Number(d.totalBills || 0).toLocaleString()}</b> • สุทธิรวม: <b>${Number(d.totalNet || 0).toLocaleString()}</b> บาท<br/>
-           เงินสด: <b>${Number(d.cashTotal || 0).toLocaleString()}</b> • โอน: <b>${Number(d.transferTotal || 0).toLocaleString()}</b> • ค้างชำระ: <b>${Number(d.unpaidTotal || 0).toLocaleString()}</b><br/>
-           ปิดโดย: <b>${d.closedBy || "-"}</b> • เวลา: <b>${d.closedAt?.toDate ? d.closedAt.toDate().toLocaleString() : "-"}</b>`;
-
-        setClosedUI(true);
-      } else {
-        // ยังไม่ปิดยอด -> ยังให้กดได้
-        setClosedUI(false);
-      }
-    }, (err) => {
-      console.error(err);
-      resultEl.textContent = "❌ โหลดสถานะปิดยอดไม่สำเร็จ (เช็ค Rules)";
-    });
-
-    // 2) สรุปยอดจาก transactions วันนี้ + สาขานี้ (realtime)
-    // ใช้ branchKey เพื่อให้เข้ากับ Rules และลดปัญหาชื่อสาขามีช่องว่าง
-    const q = db.collection("transactions")
-      .where("businessDate", "==", businessDate)
-      .where("branchKey", "==", branchKey);
-
-    unsubscribeTx = q.onSnapshot((snap) => {
-      let totalBills = 0;
-      let totalNet = 0;
-      let cashTotal = 0;
-      let transferTotal = 0;
-      let unpaidTotal = 0;
-
-      snap.forEach((doc) => {
-        const d = doc.data();
-        totalBills += 1;
-
-        const net = Number(d.netAmount || 0);
-        totalNet += net;
-
-        if (d.paymentStatus === "paid") {
-          if (d.paymentMethod === "cash") cashTotal += net;
-          if (d.paymentMethod === "transfer") transferTotal += net;
-        }
-        if (d.paymentStatus === "unpaid") {
-          unpaidTotal += net;
-        }
-      });
-
-      lastComputed = {
-        branchId,
-        branchKey,
-        businessDate,
-        totalBills,
-        totalNet,
-        cashTotal,
-        transferTotal,
-        unpaidTotal
-      };
-
-      summaryEl.innerHTML =
-        `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>
-         จำนวนบิล: <b>${totalBills.toLocaleString()}</b><br/>
-         ยอดสุทธิรวม: <b>${totalNet.toLocaleString()}</b> บาท<br/>
-         เงินสด: <b>${cashTotal.toLocaleString()}</b> • โอน: <b>${transferTotal.toLocaleString()}</b> • ค้างชำระ: <b>${unpaidTotal.toLocaleString()}</b>`;
-    }, (err) => {
-      console.error(err);
-      summaryEl.textContent = "❌ โหลดสรุปยอดไม่สำเร็จ (เช็ค Rules/Index)";
-    });
-  }
-
-  // กดปิดยอด
-  closeBtn.addEventListener("click", async () => {
-    try {
-      if (!lastComputed) {
-        resultEl.textContent = "❌ ยังโหลดสรุปยอดไม่พร้อม กรุณารอสักครู่";
-        return;
-      }
-
-      const branchId = branchEl.value;
-      const branchKey = toBranchKey(branchId);
-      const docId = closeDocId(branchKey, businessDate);
-
-      closeBtn.disabled = true;
-      resultEl.textContent = "⏳ กำลังปิดยอด...";
-
-      // ใช้ transaction กันกดซ้ำ
-      await db.runTransaction(async (tx) => {
-        const ref = db.collection("daily_closes").doc(docId);
-        const snap = await tx.get(ref);
-
-        if (snap.exists) {
-          throw new Error("วันนี้สาขานี้ปิดยอดแล้ว");
-        }
-
-        tx.set(ref, {
-          ...lastComputed,
-          closedBy: (closedByEl.value || "").trim() || null,
-          note: (noteEl.value || "").trim() || null,
-          closedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      });
-
-      resultEl.textContent = "✅ ปิดยอดเรียบร้อยแล้ว (ล็อกแล้ว)";
-      setClosedUI(true);
-    } catch (err) {
-      console.error(err);
-      resultEl.textContent = `❌ ปิดยอดไม่สำเร็จ: ${err.message || err}`;
-      // เปิดให้ลองใหม่ได้
-      setClosedUI(false);
-    }
-  });
-
-  // เปลี่ยนสาขาแล้ว reload summary
-  branchEl.addEventListener("change", startRealtimeSummary);
-
-  startRealtimeSummary();
-});
+           เงินสด: <b>${Number(d.cashTotal || 0).toLocaleString()}</b> • โอน:
