@@ -25,6 +25,23 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastRows = [];
 
   // ---------- render ----------
+  function renderKPI(rows) {
+    let sumBills = 0, sumNet = 0, sumCash = 0, sumTransfer = 0, sumUnpaid = 0;
+
+    rows.forEach((r) => {
+      sumBills += Number(r.totalBills || 0);
+      sumNet += Number(r.totalNet || 0);
+      sumCash += Number(r.cashTotal || 0);
+      sumTransfer += Number(r.transferTotal || 0);
+      sumUnpaid += Number(r.unpaidTotal || 0);
+    });
+
+    kpiEl.innerHTML = `
+      สรุปรวม: <b>${rows.length}</b> วัน • บิลรวม: <b>${money(sumBills)}</b> • สุทธิ: <b>${money(sumNet)}</b> บาท<br/>
+      เงินสด: <b>${money(sumCash)}</b> • โอน: <b>${money(sumTransfer)}</b> • ค้างชำระ: <b>${money(sumUnpaid)}</b>
+    `;
+  }
+
   function renderDailyCloses(rows) {
     if (!rows.length) {
       listEl.innerHTML = `<div class="muted">ไม่พบข้อมูลในช่วงวันที่ที่เลือก</div>`;
@@ -70,22 +87,6 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  function renderKPI(rows) {
-    let sumBills = 0, sumNet = 0, sumCash = 0, sumTransfer = 0, sumUnpaid = 0;
-    rows.forEach((r) => {
-      sumBills += Number(r.totalBills || 0);
-      sumNet += Number(r.totalNet || 0);
-      sumCash += Number(r.cashTotal || 0);
-      sumTransfer += Number(r.transferTotal || 0);
-      sumUnpaid += Number(r.unpaidTotal || 0);
-    });
-
-    kpiEl.innerHTML = `
-      สรุปรวม: <b>${rows.length}</b> วัน • บิลรวม: <b>${money(sumBills)}</b> • สุทธิ: <b>${money(sumNet)}</b> บาท<br/>
-      เงินสด: <b>${money(sumCash)}</b> • โอน: <b>${money(sumTransfer)}</b> • ค้างชำระ: <b>${money(sumUnpaid)}</b>
-    `;
-  }
-
   function renderAmendments(items) {
     if (!items.length) {
       amendmentsEl.innerHTML = `<div class="muted">ยังไม่มีการแก้ไขปิดยอด</div>`;
@@ -123,8 +124,8 @@ document.addEventListener("DOMContentLoaded", () => {
     listEl.textContent = "กำลังโหลด...";
     amendmentsEl.textContent = "กำลังโหลด...";
 
-    // ---------- (A) daily_closes ----------
     try {
+      // 1) daily_closes
       let q = db.collection("daily_closes")
         .where("businessDate", ">=", fromYMD)
         .where("businessDate", "<=", toYMD)
@@ -135,20 +136,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const snap = await q.get();
       const rows = [];
       snap.forEach((doc) => rows.push(doc.data()));
-
       lastRows = rows;
+
       renderKPI(rows);
       renderDailyCloses(rows);
-    } catch (err) {
-      console.error("daily_closes error:", err);
-      const msg = err?.message || String(err);
-      kpiEl.textContent = `❌ โหลดปิดยอดไม่สำเร็จ: ${msg}`;
-      listEl.innerHTML = `<div class="muted">❌ โหลดข้อมูลปิดยอดไม่สำเร็จ</div>`;
-      // ไม่ return เพื่อให้ amendments ยังลองโหลดได้ (แต่ปกติถ้าปิดยอดพัง amendments ก็ไม่สำคัญแล้ว)
-    }
 
-    // ---------- (B) amendments ----------
-    try {
+      // 2) collectionGroup amendments (subcollection จริง)
       let aq = db.collectionGroup("amendments")
         .where("businessDate", ">=", fromYMD)
         .where("businessDate", "<=", toYMD)
@@ -162,11 +155,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const items = [];
       aSnap.forEach((doc) => items.push(doc.data()));
       renderAmendments(items);
+
     } catch (err) {
-      console.error("amendments error:", err);
+      console.error("Owner Dashboard error:", err);
       const msg = err?.message || String(err);
-      amendmentsEl.innerHTML = `<div class="muted">❌ โหลดประวัติการแก้ไขไม่สำเร็จ: ${safeText(msg)}</div>`;
-      // สำคัญ: ไม่เขียนทับ kpi/list แล้ว
+      kpiEl.innerHTML = `<span style="color:#c00;">❌ โหลดไม่สำเร็จ: ${safeText(msg)}</span>`;
+      listEl.innerHTML = `<div class="muted">❌ โหลดข้อมูลไม่สำเร็จ</div>`;
+      amendmentsEl.innerHTML = `<div class="muted">❌ โหลดประวัติการแก้ไขไม่สำเร็จ</div>`;
     }
   }
 
@@ -180,7 +175,6 @@ document.addEventListener("DOMContentLoaded", () => {
     ];
 
     const lines = [headers.join(",")];
-
     for (const r of lastRows) {
       const amendedAt = r.amendedAt?.toDate ? r.amendedAt.toDate().toISOString() : "";
       lines.push([
