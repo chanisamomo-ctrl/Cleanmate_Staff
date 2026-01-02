@@ -22,12 +22,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const amendReasonEl = document.getElementById("amendReason");
 
   // helper จาก app.js (ต้องมี todayYMD)
-  const businessDate = todayYMD();
-  dateEl.value = businessDate;
+  let businessDate = todayYMD();
+  if (dateEl) dateEl.value = businessDate;
 
   let unsubscribeTx = null;
-  let lastComputed = null;
-  let lastCloseDoc = null;
+  let unsubscribeClose = null;
+
+  let lastComputed = null; // summary จากรายการบิล
+  let lastCloseDoc = null; // daily_closes ล่าสุด
 
   function branchKey(branchId) {
     return (branchId || "").replace(/\s+/g, "_");
@@ -42,40 +44,58 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderTxList(items) {
-    if (!items.length) {
+    if (!items || items.length === 0) {
       txListEl.innerHTML = `<div class="muted">ยังไม่มีรายการของวันนี้</div>`;
       return;
     }
 
-    txListEl.innerHTML = items.map((d) => {
-      const bill = d.billNo || "-";
-      const status = d.paymentStatus === "paid" ? "ชำระแล้ว" : (d.paymentStatus === "unpaid" ? "ค้างชำระ" : "ยกเลิก");
-      const method = d.paymentMethod === "cash" ? "เงินสด" : (d.paymentMethod === "transfer" ? "โอน" : "-");
-      const svc = d.serviceType === "dry" ? "ซักแห้ง" : (d.serviceType === "wash" ? "ซักน้ำ" : "-");
-      const name = d.customerName || "-";
-      const phone = d.customerPhone || "-";
-      const net = money(d.netAmount || 0);
+    txListEl.innerHTML = items
+      .map((d) => {
+        const bill = d.billNo || "-";
+        const status =
+          d.paymentStatus === "paid"
+            ? "ชำระแล้ว"
+            : d.paymentStatus === "unpaid"
+            ? "ค้างชำระ"
+            : "ยกเลิก";
+        const method =
+          d.paymentMethod === "cash"
+            ? "เงินสด"
+            : d.paymentMethod === "transfer"
+            ? "โอน"
+            : "-";
+        const svc =
+          d.serviceType === "dry"
+            ? "ซักแห้ง"
+            : d.serviceType === "wash"
+            ? "ซักน้ำ"
+            : "-";
+        const name = d.customerName || "-";
+        const phone = d.customerPhone || "-";
+        const net = money(d.netAmount || 0);
 
-      return `
-        <div class="card" style="margin:8px 0;">
-          <div class="row" style="align-items:center;">
-            <div>
-              <b>บิล:</b> ${bill} <span class="badge">${status}</span><br/>
-              <span class="muted">ลูกค้า:</span> ${name} (${phone})<br/>
-              <span class="muted">บริการ:</span> ${svc} • <span class="muted">ชิ้น:</span> ${Number(d.itemCount||0)} • <span class="muted">วิธีชำระ:</span> ${method}
-            </div>
-            <div style="text-align:right;">
-              <b>สุทธิ: ${net} บาท</b><br/>
-              <span class="muted">${d.businessDate || "-"}</span>
+        return `
+          <div class="card" style="margin:8px 0;">
+            <div class="row" style="align-items:center;">
+              <div>
+                <b>บิล:</b> ${bill} <span class="badge">${status}</span><br/>
+                <span class="muted">ลูกค้า:</span> ${name} (${phone})<br/>
+                <span class="muted">บริการ:</span> ${svc} • <span class="muted">ชิ้น:</span> ${Number(
+                  d.itemCount || 0
+                )} • <span class="muted">วิธีชำระ:</span> ${method}
+              </div>
+              <div style="text-align:right;">
+                <b>สุทธิ: ${net} บาท</b><br/>
+                <span class="muted">${d.businessDate || "-"}</span>
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    }).join("");
+        `;
+      })
+      .join("");
   }
 
   function setAmendInputsFromCloseDoc(docData) {
-    // เอาค่าปัจจุบันมาใส่ช่องแก้ไข (ให้แก้เฉพาะยอด)
     amendTotalNetEl.value = Number(docData?.totalNet || 0);
     amendCashEl.value = Number(docData?.cashTotal || 0);
     amendTransferEl.value = Number(docData?.transferTotal || 0);
@@ -83,103 +103,150 @@ document.addEventListener("DOMContentLoaded", () => {
     amendReasonEl.value = "";
   }
 
-  function startRealtime() {
-    if (unsubscribeTx) unsubscribeTx();
-    lastComputed = null;
-    lastCloseDoc = null;
-
+  function resetUIForLoad() {
     summaryEl.textContent = "กำลังโหลด...";
     txListEl.textContent = "กำลังโหลดรายการ...";
     resultEl.textContent = "";
     amendResultEl.textContent = "";
+
     amendBox.style.display = "none";
     toggleAmendBtn.style.display = "none";
 
+    closeBtn.disabled = true;
+    closeBtn.textContent = "🔒 ปิดยอดวันนี้";
+  }
+
+  function stopListeners() {
+    if (unsubscribeTx) unsubscribeTx();
+    if (unsubscribeClose) unsubscribeClose();
+    unsubscribeTx = null;
+    unsubscribeClose = null;
+  }
+
+  function startRealtime() {
+    stopListeners();
+
+    lastComputed = null;
+    lastCloseDoc = null;
+
+    resetUIForLoad();
+
     const branchId = branchEl.value;
+    const bKey = branchKey(branchId);
     const docId = closeDocId(branchId, businessDate);
 
-    // 1) โหลด close doc (ถ้ามี)
-    db.collection("daily_closes").doc(docId).onSnapshot((doc) => {
-      if (doc.exists) {
-        const d = doc.data();
-        lastCloseDoc = d;
+    // 1) daily_closes realtime
+    unsubscribeClose = db
+      .collection("daily_closes")
+      .doc(docId)
+      .onSnapshot((doc) => {
+        if (doc.exists) {
+          const d = doc.data();
+          lastCloseDoc = d;
 
-        summaryEl.innerHTML =
-          `✅ <b>ปิดยอดแล้ว</b><br/>
-           สาขา: <b>${d.branchId}</b> • วันที่: <b>${d.businessDate}</b><br/>
-           บิล: <b>${d.totalBills}</b> • สุทธิรวม: <b>${money(d.totalNet)}</b> บาท<br/>
-           เงินสด: <b>${money(d.cashTotal)}</b> • โอน: <b>${money(d.transferTotal)}</b> • ค้างชำระ: <b>${money(d.unpaidTotal)}</b><br/>
-           ปิดโดย: <b>${d.closedBy || "-"}</b> • เวลา: <b>${d.closedAt?.toDate ? d.closedAt.toDate().toLocaleString() : "-"}</b>
-           ${d.amendedAt?.toDate ? `<br/>✏️ แก้ไขล่าสุด: <b>${d.amendedAt.toDate().toLocaleString()}</b> โดย <b>${d.amendedBy || "-"}</b>` : ""}`;
+          summaryEl.innerHTML = `
+            ✅ <b>ปิดยอดแล้ว</b><br/>
+            สาขา: <b>${d.branchId}</b> • วันที่: <b>${d.businessDate}</b><br/>
+            บิล: <b>${d.totalBills}</b> • สุทธิรวม: <b>${money(d.totalNet)}</b> บาท<br/>
+            เงินสด: <b>${money(d.cashTotal)}</b> • โอน: <b>${money(d.transferTotal)}</b> • ค้างชำระ: <b>${money(
+              d.unpaidTotal
+            )}</b><br/>
+            ปิดโดย: <b>${d.closedBy || "-"}</b> • เวลา: <b>${
+              d.closedAt?.toDate ? d.closedAt.toDate().toLocaleString() : "-"
+            }</b>
+            ${
+              d.amendedAt?.toDate
+                ? `<br/>✏️ แก้ไขล่าสุด: <b>${d.amendedAt.toDate().toLocaleString()}</b> โดย <b>${d.amendedBy || "-"}</b>`
+                : ""
+            }
+          `;
 
-        closeBtn.disabled = true;
-        closeBtn.textContent = "✅ ปิดยอดแล้ว (ล็อกแล้ว)";
+          closeBtn.disabled = true;
+          closeBtn.textContent = "✅ ปิดยอดแล้ว (ล็อกแล้ว)";
 
-        // เปิดปุ่มขอแก้ไขยอด
-        toggleAmendBtn.style.display = "inline-block";
-        setAmendInputsFromCloseDoc(d);
-      } else {
-        summaryEl.innerHTML =
-          `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>กำลังคำนวณจากรายการ...`;
+          toggleAmendBtn.style.display = "inline-block";
+          setAmendInputsFromCloseDoc(d);
+        } else {
+          // ยังไม่ปิดยอด
+          closeBtn.disabled = false;
+          closeBtn.textContent = "🔒 ปิดยอดวันนี้";
+          toggleAmendBtn.style.display = "none";
+          amendBox.style.display = "none";
 
-        closeBtn.disabled = false;
-        closeBtn.textContent = "🔒 ปิดยอดวันนี้";
-        toggleAmendBtn.style.display = "none";
-        amendBox.style.display = "none";
-      }
-    });
-
-    // 2) โหลดรายการ transactions ของวันนี้ + สาขานี้ แบบ realtime (เพื่อให้ยอด “ตรงกับรายการวันนี้”)
-    const q = db.collection("transactions")
-      .where("businessDate", "==", businessDate)
-      .where("branchId", "==", branchId);
-
-    unsubscribeTx = q.onSnapshot((snap) => {
-      const items = [];
-      let totalBills = 0;
-      let totalNet = 0;
-      let cashTotal = 0;
-      let transferTotal = 0;
-      let unpaidTotal = 0;
-
-      snap.forEach((doc) => {
-        const d = doc.data();
-        items.push(d);
-
-        // ถ้าบิลถูกยกเลิก จะไม่นับเข้ายอด
-        if (d.paymentStatus === "cancelled") return;
-
-        totalBills += 1;
-        const net = Number(d.netAmount || 0);
-        totalNet += net;
-
-        if (d.paymentStatus === "paid") {
-          if (d.paymentMethod === "cash") cashTotal += net;
-          if (d.paymentMethod === "transfer") transferTotal += net;
-        } else if (d.paymentStatus === "unpaid") {
-          unpaidTotal += net;
+          // ถ้ามี computed แล้ว ให้โชว์ computed
+          if (lastComputed) {
+            const c = lastComputed;
+            summaryEl.innerHTML = `
+              สาขา: <b>${c.branchId}</b> • วันที่: <b>${c.businessDate}</b><br/>
+              จำนวนบิล: <b>${c.totalBills}</b><br/>
+              ยอดสุทธิรวม: <b>${money(c.totalNet)}</b> บาท<br/>
+              เงินสด: <b>${money(c.cashTotal)}</b> • โอน: <b>${money(c.transferTotal)}</b> • ค้างชำระ: <b>${money(
+              c.unpaidTotal
+            )}</b>
+            `;
+          } else {
+            summaryEl.innerHTML = `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>กำลังคำนวณจากรายการ...`;
+          }
         }
       });
 
-      // เรียงรายการตามเลขบิล (ถ้าต้องการ)
-      items.sort((a, b) => String(a.billNo || "").localeCompare(String(b.billNo || "")));
+    // 2) transactions realtime (ใช้ branchKey + businessDate)
+    // หมายเหตุ: ต้องมี field branchKey ใน transactions
+    const q = db
+      .collection("transactions")
+      .where("businessDate", "==", businessDate)
+      .where("branchKey", "==", bKey);
 
-      lastComputed = { branchId, businessDate, totalBills, totalNet, cashTotal, transferTotal, unpaidTotal };
-      renderTxList(items);
+    unsubscribeTx = q.onSnapshot(
+      (snap) => {
+        const items = [];
+        let totalBills = 0;
+        let totalNet = 0;
+        let cashTotal = 0;
+        let transferTotal = 0;
+        let unpaidTotal = 0;
 
-      // ถ้ายังไม่ปิดยอด ให้โชว์ summary จาก computed
-      if (!lastCloseDoc) {
-        summaryEl.innerHTML =
-          `สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>
-           จำนวนบิล: <b>${totalBills}</b><br/>
-           ยอดสุทธิรวม: <b>${money(totalNet)}</b> บาท<br/>
-           เงินสด: <b>${money(cashTotal)}</b> • โอน: <b>${money(transferTotal)}</b> • ค้างชำระ: <b>${money(unpaidTotal)}</b>`;
+        snap.forEach((doc) => {
+          const d = doc.data();
+          items.push(d);
+
+          // ยกเลิกบิลไม่นับเข้ายอด
+          if (d.paymentStatus === "cancelled") return;
+
+          totalBills += 1;
+
+          const net = Number(d.netAmount || 0);
+          totalNet += net;
+
+          if (d.paymentStatus === "paid") {
+            if (d.paymentMethod === "cash") cashTotal += net;
+            if (d.paymentMethod === "transfer") transferTotal += net;
+          } else if (d.paymentStatus === "unpaid") {
+            unpaidTotal += net;
+          }
+        });
+
+        items.sort((a, b) => String(a.billNo || "").localeCompare(String(b.billNo || "")));
+        renderTxList(items);
+
+        lastComputed = { branchId, businessDate, totalBills, totalNet, cashTotal, transferTotal, unpaidTotal };
+
+        // ถ้ายังไม่ปิดยอด ให้ใช้ computed โชว์
+        if (!lastCloseDoc) {
+          summaryEl.innerHTML = `
+            สาขา: <b>${branchId}</b> • วันที่: <b>${businessDate}</b><br/>
+            จำนวนบิล: <b>${totalBills}</b><br/>
+            ยอดสุทธิรวม: <b>${money(totalNet)}</b> บาท<br/>
+            เงินสด: <b>${money(cashTotal)}</b> • โอน: <b>${money(transferTotal)}</b> • ค้างชำระ: <b>${money(unpaidTotal)}</b>
+          `;
+        }
+      },
+      (err) => {
+        console.error(err);
+        summaryEl.textContent = "❌ โหลดข้อมูลไม่สำเร็จ (เช็ค Rules/Index)";
+        txListEl.textContent = "❌ โหลดรายการไม่สำเร็จ";
       }
-    }, (err) => {
-      console.error(err);
-      summaryEl.textContent = "❌ โหลดข้อมูลไม่สำเร็จ (เช็ค Rules/Index)";
-      txListEl.textContent = "❌ โหลดรายการไม่สำเร็จ";
-    });
+    );
   }
 
   // ปิดยอด
@@ -206,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
           branchKey: branchKey(branchId),
           closedBy: (closedByEl.value || "").trim() || null,
           note: (noteEl.value || "").trim() || null,
-          closedAt: firebase.firestore.FieldValue.serverTimestamp()
+          closedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
       });
 
@@ -221,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // toggle กล่องแก้ไขยอด
   toggleAmendBtn.addEventListener("click", () => {
-    amendBox.style.display = (amendBox.style.display === "none") ? "block" : "none";
+    amendBox.style.display = amendBox.style.display === "none" ? "block" : "none";
     amendResultEl.textContent = "";
   });
 
@@ -232,8 +299,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const docId = closeDocId(branchId, businessDate);
       const reason = (amendReasonEl.value || "").trim();
 
-      if (!reason) {
-        amendResultEl.textContent = "❌ กรุณากรอกเหตุผลในการแก้ไข";
+      if (!reason || reason.length < 3) {
+        amendResultEl.textContent = "❌ กรุณากรอกเหตุผลในการแก้ไข (อย่างน้อย 3 ตัวอักษร)";
         return;
       }
 
@@ -243,24 +310,20 @@ document.addEventListener("DOMContentLoaded", () => {
       await db.runTransaction(async (tx) => {
         const closeRef = db.collection("daily_closes").doc(docId);
         const snap = await tx.get(closeRef);
-
         if (!snap.exists) throw new Error("ยังไม่ได้ปิดยอดของวันนี้ จึงแก้ไขไม่ได้");
 
         const before = snap.data();
 
-        // ค่าที่แก้ไข
         const after = {
           totalNet: Number(amendTotalNetEl.value || 0),
           cashTotal: Number(amendCashEl.value || 0),
           transferTotal: Number(amendTransferEl.value || 0),
-          unpaidTotal: Number(amendUnpaidEl.value || 0)
+          unpaidTotal: Number(amendUnpaidEl.value || 0),
         };
 
-        // เก็บประวัติ (before -> after) ใน subcollection
-        const amendRef = closeRef.collection("amendments").doc();
-        tx.set(amendRef, {
-          branchId,
-          businessDate,
+        // ✅ เก็บประวัติใน subcollection "revisions" (ให้ตรงกับ Rules)
+        const revRef = closeRef.collection("revisions").doc();
+        tx.set(revRef, {
           reason,
           amendedBy: (closedByEl.value || "").trim() || null,
           amendedNote: (noteEl.value || "").trim() || null,
@@ -271,18 +334,21 @@ document.addEventListener("DOMContentLoaded", () => {
             transferTotal: Number(before.transferTotal || 0),
             unpaidTotal: Number(before.unpaidTotal || 0),
             closedBy: before.closedBy || null,
-            closedAt: before.closedAt || null
+            closedAt: before.closedAt || null,
+            amendedBy: before.amendedBy || null,
+            amendedAt: before.amendedAt || null,
+            amendedReason: before.amendedReason || null,
           },
           after,
-          amendedAt: firebase.firestore.FieldValue.serverTimestamp()
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
 
-        // อัปเดตยอดล่าสุดบน daily_closes (เพื่อให้หน้าอื่นอ่าน “ยอดล่าสุด” ได้เลย)
+        // ✅ อัปเดตยอดล่าสุดบน daily_closes (Rules บังคับให้มี amendedReason)
         tx.update(closeRef, {
           ...after,
           amendedAt: firebase.firestore.FieldValue.serverTimestamp(),
           amendedBy: (closedByEl.value || "").trim() || null,
-          amendedReason: reason
+          amendedReason: reason,
         });
       });
 
@@ -297,7 +363,19 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // เปลี่ยนสาขา
-  branchEl.addEventListener("change", startRealtime);
+  branchEl.addEventListener("change", () => {
+    // ใช้ date เดิมของวันนี้
+    businessDate = dateEl?.value || todayYMD();
+    startRealtime();
+  });
+
+  // (ถ้าอนาคตอยากให้เลือกวันได้) เปลี่ยนวันที่แล้ว reload
+  if (dateEl) {
+    dateEl.addEventListener("change", () => {
+      businessDate = dateEl.value || todayYMD();
+      startRealtime();
+    });
+  }
 
   startRealtime();
 });
