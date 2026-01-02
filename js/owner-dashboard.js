@@ -1,35 +1,61 @@
 // js/owner-dashboard.js
 document.addEventListener("DOMContentLoaded", () => {
-  const branchEl = document.getElementById("branch");
-  const fromEl = document.getElementById("fromDate");
-  const toEl = document.getElementById("toDate");
-
-  const loadBtn = document.getElementById("loadBtn");
-  const exportBtn = document.getElementById("exportBtn");
-
-  const summaryTopEl = document.getElementById("summaryTop");     // สรุปรวมด้านบน
-  const tableBodyEl = document.getElementById("tableBody");       // tbody ของตาราง
-  const revisionsEl = document.getElementById("revisions");       // โซนประวัติการแก้ไข
-
-  let lastRows = []; // เก็บไว้ใช้ export
+  // ---------- helpers ----------
+  const $ = (id) => document.getElementById(id);
 
   function money(n) {
     return Number(n || 0).toLocaleString();
   }
 
-  function ymdOrToday(v) {
-    // input type="date" จะได้ YYYY-MM-DD อยู่แล้ว
-    return (v && String(v).trim()) ? String(v).trim() : todayYMD();
+  function toYMD(input) {
+    // รองรับ:
+    // 1) YYYY-MM-DD
+    // 2) DD/MM/YYYY
+    // 3) ว่าง -> todayYMD()
+    const s = (input || "").trim();
+    if (!s) return todayYMD();
+
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+    // DD/MM/YYYY
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) {
+      const dd = m[1], mm = m[2], yyyy = m[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // ถ้า format แปลก -> ใช้ today กันพัง
+    return todayYMD();
   }
 
-  // ตั้งค่า default ช่วงวัน
-  fromEl.value = fromEl.value || todayYMD();
-  toEl.value = toEl.value || todayYMD();
+  function must(el, name) {
+    if (!el) throw new Error(`ไม่พบ element id="${name}" (เช็ค owner-dashboard.html)`);
+    return el;
+  }
+
+  // ---------- elements (ต้องมี id ตามนี้) ----------
+  const branchEl = must($("branch"), "branch");
+  const fromEl = must($("fromDate"), "fromDate");
+  const toEl = must($("toDate"), "toDate");
+
+  const loadBtn = must($("loadBtn"), "loadBtn");
+  const exportBtn = must($("exportBtn"), "exportBtn");
+
+  const summaryTopEl = must($("summaryTop"), "summaryTop");
+  const tableBodyEl = must($("tableBody"), "tableBody");
+  const revisionsEl = must($("revisions"), "revisions");
+
+  let lastRows = [];
+
+  // ตั้งค่า default ถ้าว่าง
+  if (!fromEl.value) fromEl.value = todayYMD();
+  if (!toEl.value) toEl.value = todayYMD();
 
   async function loadData() {
-    const branchId = branchEl.value; // "ทั้งหมด" หรือ "Chamchuri" ...
-    const fromYMD = ymdOrToday(fromEl.value);
-    const toYMD = ymdOrToday(toEl.value);
+    const branchId = branchEl.value;
+    const fromYMD = toYMD(fromEl.value);
+    const toYMD2 = toYMD(toEl.value);
 
     summaryTopEl.textContent = "กำลังโหลดข้อมูล...";
     tableBodyEl.innerHTML = `<tr><td colspan="9">กำลังโหลด...</td></tr>`;
@@ -37,15 +63,11 @@ document.addEventListener("DOMContentLoaded", () => {
     lastRows = [];
 
     try {
-      // -----------------------------
-      // 1) Query daily_closes ตามช่วงวัน
-      // businessDate เป็น string YYYY-MM-DD -> range แบบ lexicographic ใช้ได้
-      // -----------------------------
+      // 1) daily_closes
       let q = db.collection("daily_closes")
         .where("businessDate", ">=", fromYMD)
-        .where("businessDate", "<=", toYMD);
+        .where("businessDate", "<=", toYMD2);
 
-      // ถ้าเลือกสาขาเฉพาะ ให้ filter เพิ่ม
       if (branchId && branchId !== "ทั้งหมด") {
         q = q.where("branchId", "==", branchId);
       }
@@ -53,16 +75,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const snap = await q.get();
 
       const rows = [];
-      let sumBills = 0;
-      let sumNet = 0;
-      let sumCash = 0;
-      let sumTransfer = 0;
-      let sumUnpaid = 0;
+      let sumBills = 0, sumNet = 0, sumCash = 0, sumTransfer = 0, sumUnpaid = 0;
 
       snap.forEach((doc) => {
         const d = doc.data();
 
-        // ✅ ชื่อ field ต้องตรงกับที่ staff-close บันทึก
+        // ✅ ชื่อ field ให้ตรงกับ staff-close.js ของคุณ
         const totalBills = Number(d.totalBills || 0);
         const totalNet = Number(d.totalNet || 0);
         const cashTotal = Number(d.cashTotal || 0);
@@ -85,11 +103,9 @@ document.addEventListener("DOMContentLoaded", () => {
           unpaidTotal,
           closedBy: d.closedBy || "",
           note: d.note || "",
-          amendedAt: d.amendedAt?.toDate ? d.amendedAt.toDate().toLocaleString() : ""
         });
       });
 
-      // เรียงวันก่อน แล้วสาขา
       rows.sort((a, b) => {
         const c = String(a.businessDate).localeCompare(String(b.businessDate));
         if (c !== 0) return c;
@@ -98,13 +114,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       lastRows = rows;
 
-      // render summary
       summaryTopEl.innerHTML = `
         สรุปรวม: <b>${rows.length}</b> วัน/รายการ • บิลรวม: <b>${money(sumBills)}</b> • สุทธิ: <b>${money(sumNet)}</b> บาท<br/>
         เงินสด: <b>${money(sumCash)}</b> • โอน: <b>${money(sumTransfer)}</b> • ค้างชำระ: <b>${money(sumUnpaid)}</b>
       `;
 
-      // render table
       if (!rows.length) {
         tableBodyEl.innerHTML = `<tr><td colspan="9">ไม่พบข้อมูลในช่วงวันที่ที่เลือก</td></tr>`;
       } else {
@@ -123,19 +137,17 @@ document.addEventListener("DOMContentLoaded", () => {
         `).join("");
       }
 
-      // -----------------------------
-      // 2) โหลดประวัติการแก้ไข (ล่าสุด 50)
-      // staff-close.js ของคุณบันทึกใน subcollection: daily_closes/{doc}/amendments
-      // ดังนั้นต้องใช้ collectionGroup("amendments")
-      // -----------------------------
-      let aq = db.collectionGroup("amendments").orderBy("amendedAt", "desc").limit(50);
+      // 2) amendments (ประวัติแก้ไข) — subcollection: daily_closes/{doc}/amendments
+      let aq = db.collectionGroup("amendments")
+        .where("businessDate", ">=", fromYMD)
+        .where("businessDate", "<=", toYMD2)
+        .orderBy("businessDate")
+        .orderBy("amendedAt", "desc")
+        .limit(50);
 
-      // ถ้าเลือกสาขาเฉพาะ ให้กรองเพิ่ม (ถ้าฟิลด์มี branchId)
       if (branchId && branchId !== "ทั้งหมด") {
         aq = aq.where("branchId", "==", branchId);
       }
-      // กรองตามช่วงวัน (businessDate เป็น string)
-      aq = aq.where("businessDate", ">=", fromYMD).where("businessDate", "<=", toYMD);
 
       const aSnap = await aq.get();
 
@@ -157,8 +169,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
     } catch (err) {
-      console.error(err);
-      summaryTopEl.textContent = `❌ โหลดข้อมูลไม่สำเร็จ: ${err.message || err}`;
+      console.error("Owner Dashboard load error:", err);
+
+      // ถ้าเป็นเรื่อง Index จะเห็นข้อความนี้
+      const msg = err?.message || String(err);
+      summaryTopEl.textContent = `❌ โหลดไม่สำเร็จ: ${msg}`;
       tableBodyEl.innerHTML = `<tr><td colspan="9">❌ โหลดไม่สำเร็จ</td></tr>`;
       revisionsEl.innerHTML = `<div class="muted">❌ โหลดไม่สำเร็จ</div>`;
     }
@@ -167,11 +182,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function exportCSV() {
     if (!lastRows.length) return;
 
-    const headers = ["businessDate","branchId","totalBills","totalNet","cashTotal","transferTotal","unpaidTotal","closedBy","note","amendedAt"];
+    const headers = ["businessDate","branchId","totalBills","totalNet","cashTotal","transferTotal","unpaidTotal","closedBy","note"];
     const lines = [headers.join(",")];
 
     for (const r of lastRows) {
-      const row = [
+      lines.push([
         r.businessDate,
         r.branchId,
         r.totalBills,
@@ -180,10 +195,8 @@ document.addEventListener("DOMContentLoaded", () => {
         r.transferTotal,
         r.unpaidTotal,
         (r.closedBy || "").replaceAll(",", " "),
-        (r.note || "").replaceAll(",", " "),
-        (r.amendedAt || "").replaceAll(",", " ")
-      ];
-      lines.push(row.join(","));
+        (r.note || "").replaceAll(",", " ")
+      ].join(","));
     }
 
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
@@ -191,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `owner-dashboard_${fromEl.value}_${toEl.value}.csv`;
+    a.download = `owner-dashboard_${toYMD(fromEl.value)}_${toYMD(toEl.value)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
