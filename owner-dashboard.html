@@ -11,40 +11,57 @@
     <a class="btn light" href="index.html">← กลับหน้าแรก</a>
 
     <div class="card">
-      <h2>📊 Owner Dashboard (โครงร่าง)</h2>
-      <p class="small">ต่อไปจะเลือกช่วงเวลา/สาขา และดึงยอดจากฐานข้อมูล</p>
+      <h2>📊 Owner Dashboard</h2>
+      <p class="small muted">ดูยอดปิดรายวันย้อนหลัง • แยกสาขา • Export CSV</p>
 
       <div class="row">
         <div>
-          <label>ช่วงเวลา</label>
-          <select>
-            <option>วันนี้</option>
-            <option>เดือนนี้</option>
-            <option>ปีนี้</option>
-            <option>กำหนดเอง</option>
+          <label>สาขา</label>
+          <select id="branch">
+            <option value="">ทั้งหมด</option>
+            <option value="Chamchuri">Chamchuri</option>
+            <option value="Samyan Mitrtown">Samyan Mitrtown</option>
           </select>
         </div>
         <div>
-          <label>สาขา</label>
-          <select>
-            <option>ทั้งหมด</option>
-            <option>Chamchuri</option>
-            <option>Samyan Mitrtown</option>
-          </select>
+          <label>จากวันที่</label>
+          <input id="fromDate" type="date" />
         </div>
       </div>
 
-      <div class="grid" style="margin-top:12px;">
-        <div class="card"><b>ยอดสุทธิ</b><div>0</div></div>
-        <div class="card"><b>จำนวนบิล</b><div>0</div></div>
-        <div class="card"><b>ค้างชำระ</b><div>0</div></div>
-        <div class="card"><b>ยกเลิก</b><div>0</div></div>
+      <div class="row">
+        <div>
+          <label>ถึงวันที่</label>
+          <input id="toDate" type="date" />
+        </div>
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+          <button class="btn secondary" id="loadBtn">โหลดข้อมูล</button>
+          <button class="btn" id="exportBtn">Export CSV</button>
+        </div>
       </div>
 
-      <button class="btn secondary" disabled>Export CSV (ทำในเฟสต่อไป)</button>
+      <hr/>
+
+      <div id="kpi" class="small">—</div>
+      <div id="list" style="margin-top:12px;">กำลังโหลด...</div>
+
+      <hr/>
+      <h3 style="margin:8px 0;">✏️ ประวัติการแก้ไข (ล่าสุด 50 รายการ)</h3>
+      <div id="amendments" class="small muted">กำลังโหลด...</div>
     </div>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore-compat.js"></script>
+
+  <!-- Init Firebase -->
+  <script src="js/firebase.js"></script>
+
+  <!-- Helpers -->
   <script src="js/app.js"></script>
+
+  <!-- Page logic -->
+  <script src="js/owner-dashboard.js"></script>
 </body>
 </html>
