@@ -14,20 +14,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function money(n) {
     return Number(n || 0).toLocaleString();
   }
-
   function safeText(s) {
     return String(s ?? "");
-  }
-
-  function ymdPlusDays(ymd, days) {
-    // ymd = "YYYY-MM-DD"
-    const [y, m, d] = ymd.split("-").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + days);
-    const yy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getDate()).padStart(2, "0");
-    return `${yy}-${mm}-${dd}`;
   }
 
   // ตั้งค่า default วันที่
@@ -43,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const html = `
+    listEl.innerHTML = `
       <table style="width:100%; border-collapse:collapse;">
         <thead>
           <tr>
@@ -60,41 +48,30 @@ document.addEventListener("DOMContentLoaded", () => {
           </tr>
         </thead>
         <tbody>
-          ${rows
-            .map((r) => {
-              const amended = r.amendedAt?.toDate
-                ? r.amendedAt.toDate().toLocaleString()
-                : "-";
-              return `
-                <tr>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.businessDate)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.branchId)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.totalBills)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.totalNet)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.cashTotal)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.transferTotal)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.unpaidTotal)}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.closedBy || "-")}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.note || "-")}</td>
-                  <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${amended}</td>
-                </tr>
-              `;
-            })
-            .join("")}
+          ${rows.map((r) => {
+            const amended = r.amendedAt?.toDate ? r.amendedAt.toDate().toLocaleString() : "-";
+            return `
+              <tr>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.businessDate)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.branchId)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.totalBills)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.totalNet)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.cashTotal)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.transferTotal)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3; text-align:right;">${money(r.unpaidTotal)}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.closedBy || "-")}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${safeText(r.note || "-")}</td>
+                <td style="padding:8px; border-bottom:1px solid #f3f3f3;">${amended}</td>
+              </tr>
+            `;
+          }).join("")}
         </tbody>
       </table>
     `;
-
-    listEl.innerHTML = html;
   }
 
   function renderKPI(rows) {
-    let sumBills = 0,
-      sumNet = 0,
-      sumCash = 0,
-      sumTransfer = 0,
-      sumUnpaid = 0;
-
+    let sumBills = 0, sumNet = 0, sumCash = 0, sumTransfer = 0, sumUnpaid = 0;
     rows.forEach((r) => {
       sumBills += Number(r.totalBills || 0);
       sumNet += Number(r.totalNet || 0);
@@ -115,26 +92,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    amendmentsEl.innerHTML = items
-      .map((x) => {
-        const time = x.amendedAt?.toDate
-          ? x.amendedAt.toDate().toLocaleString()
-          : "-";
-        return `
-          <div class="card" style="margin:8px 0;">
-            <b>${safeText(x.businessDate)}</b> • <b>${safeText(x.branchId)}</b><br/>
-            เหตุผล: <b>${safeText(x.reason || "-")}</b><br/>
-            ก่อน: สุทธิ ${money(x.before?.totalNet)} | เงินสด ${money(x.before?.cashTotal)} | โอน ${money(
-          x.before?.transferTotal
-        )} | ค้าง ${money(x.before?.unpaidTotal)}<br/>
-            หลัง: สุทธิ ${money(x.after?.totalNet)} | เงินสด ${money(x.after?.cashTotal)} | โอน ${money(
-          x.after?.transferTotal
-        )} | ค้าง ${money(x.after?.unpaidTotal)}<br/>
-            แก้โดย: ${safeText(x.amendedBy || "-")} • เวลา: ${time}
-          </div>
-        `;
-      })
-      .join("");
+    amendmentsEl.innerHTML = items.map((x) => {
+      const time = x.amendedAt?.toDate ? x.amendedAt.toDate().toLocaleString() : "-";
+      return `
+        <div class="card" style="margin:8px 0;">
+          <b>${safeText(x.businessDate)}</b> • <b>${safeText(x.branchId)}</b><br/>
+          เหตุผล: <b>${safeText(x.reason || "-")}</b><br/>
+          ก่อน: สุทธิ ${money(x.before?.totalNet)} | เงินสด ${money(x.before?.cashTotal)} | โอน ${money(x.before?.transferTotal)} | ค้าง ${money(x.before?.unpaidTotal)}<br/>
+          หลัง: สุทธิ ${money(x.after?.totalNet)} | เงินสด ${money(x.after?.cashTotal)} | โอน ${money(x.after?.transferTotal)} | ค้าง ${money(x.after?.unpaidTotal)}<br/>
+          แก้โดย: ${safeText(x.amendedBy || "-")} • เวลา: ${time}
+        </div>
+      `;
+    }).join("");
   }
 
   // ---------- load ----------
@@ -143,7 +112,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const fromYMD = fromEl.value || todayYMD();
     const toYMD = toEl.value || todayYMD();
 
-    // ป้องกันกรณีเลือกถึงวันก่อนจากวัน
     if (fromYMD > toYMD) {
       kpiEl.textContent = "❌ ช่วงวันที่ไม่ถูกต้อง (จากวันที่ต้องไม่เกินถึงวันที่)";
       listEl.textContent = "";
@@ -155,54 +123,50 @@ document.addEventListener("DOMContentLoaded", () => {
     listEl.textContent = "กำลังโหลด...";
     amendmentsEl.textContent = "กำลังโหลด...";
 
+    // ---------- (A) daily_closes ----------
     try {
-      // 1) โหลด daily_closes
-      // ใช้ businessDate เป็น string YYYY-MM-DD จึง query range ได้
-      let q = db
-        .collection("daily_closes")
+      let q = db.collection("daily_closes")
         .where("businessDate", ">=", fromYMD)
         .where("businessDate", "<=", toYMD)
         .orderBy("businessDate", "asc");
 
-      if (branchId) {
-        q = q.where("branchId", "==", branchId);
-      }
+      if (branchId) q = q.where("branchId", "==", branchId);
 
       const snap = await q.get();
       const rows = [];
       snap.forEach((doc) => rows.push(doc.data()));
 
-      // เก็บไว้ export
       lastRows = rows;
-
       renderKPI(rows);
       renderDailyCloses(rows);
+    } catch (err) {
+      console.error("daily_closes error:", err);
+      const msg = err?.message || String(err);
+      kpiEl.textContent = `❌ โหลดปิดยอดไม่สำเร็จ: ${msg}`;
+      listEl.innerHTML = `<div class="muted">❌ โหลดข้อมูลปิดยอดไม่สำเร็จ</div>`;
+      // ไม่ return เพื่อให้ amendments ยังลองโหลดได้ (แต่ปกติถ้าปิดยอดพัง amendments ก็ไม่สำคัญแล้ว)
+    }
 
-      // 2) โหลดประวัติแก้ไขจาก subcollection daily_closes/*/amendments
-      // ใช้ collectionGroup("amendments") ตาม staff-close.js ของคุณ
-      let aq = db
-        .collectionGroup("amendments")
+    // ---------- (B) amendments ----------
+    try {
+      let aq = db.collectionGroup("amendments")
         .where("businessDate", ">=", fromYMD)
         .where("businessDate", "<=", toYMD)
         .orderBy("businessDate", "asc")
         .orderBy("amendedAt", "desc")
         .limit(50);
 
-      if (branchId) {
-        aq = aq.where("branchId", "==", branchId);
-      }
+      if (branchId) aq = aq.where("branchId", "==", branchId);
 
       const aSnap = await aq.get();
       const items = [];
       aSnap.forEach((doc) => items.push(doc.data()));
       renderAmendments(items);
     } catch (err) {
-      console.error("Owner Dashboard error:", err);
-
+      console.error("amendments error:", err);
       const msg = err?.message || String(err);
-      kpiEl.textContent = `❌ โหลดไม่สำเร็จ: ${msg}`;
-      listEl.innerHTML = `<div class="muted">❌ โหลดข้อมูลไม่สำเร็จ</div>`;
-      amendmentsEl.innerHTML = `<div class="muted">❌ โหลดข้อมูลไม่สำเร็จ</div>`;
+      amendmentsEl.innerHTML = `<div class="muted">❌ โหลดประวัติการแก้ไขไม่สำเร็จ: ${safeText(msg)}</div>`;
+      // สำคัญ: ไม่เขียนทับ kpi/list แล้ว
     }
   }
 
@@ -211,18 +175,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!lastRows.length) return;
 
     const headers = [
-      "businessDate",
-      "branchId",
-      "totalBills",
-      "totalNet",
-      "cashTotal",
-      "transferTotal",
-      "unpaidTotal",
-      "closedBy",
-      "note",
-      "amendedAt",
-      "amendedBy",
-      "amendedReason",
+      "businessDate","branchId","totalBills","totalNet","cashTotal","transferTotal","unpaidTotal",
+      "closedBy","note","amendedAt","amendedBy","amendedReason",
     ];
 
     const lines = [headers.join(",")];
@@ -260,6 +214,5 @@ document.addEventListener("DOMContentLoaded", () => {
   loadBtn.addEventListener("click", loadData);
   exportBtn.addEventListener("click", exportCSV);
 
-  // โหลดครั้งแรก
   loadData();
 });
