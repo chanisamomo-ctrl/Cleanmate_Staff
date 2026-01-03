@@ -5,6 +5,7 @@ const branchEl = document.getElementById("branch");
 const dateEl = document.getElementById("date");
 const summaryEl = document.getElementById("summary");
 const txListEl = document.getElementById("txList");
+const totalNetEl = document.getElementById("totalNet");
 
 const closedByEl = document.getElementById("closedBy");
 const noteEl = document.getElementById("note");
@@ -36,21 +37,22 @@ function dayRange(ymd) {
   end.setDate(end.getDate() + 1);
   return {
     startTs: firebase.firestore.Timestamp.fromDate(start),
-    endTs: firebase.firestore.Timestamp.fromDate(end)
+    endTs: firebase.firestore.Timestamp.fromDate(end),
   };
 }
 
 function setMsg(el, msg, ok = true) {
+  if (!el) return;
   el.style.color = ok ? "#0a7a2f" : "#b00020";
-  el.textContent = msg;
+  el.textContent = msg || "";
 }
 
 function renderSummary(t) {
   summaryEl.innerHTML = `
     <b>สรุปยอดวันนี้</b><br/>
-    บิลทั้งหมด: ${money(t.totalBills)} รายการ<br/>
-    ยอดสุทธิ (Net): ${money(t.totalNet)} บาท<br/>
-    เงินสด: ${money(t.cashTotal)} บาท • โอน: ${money(t.transferTotal)} บาท • ค้างชำระ: ${money(t.unpaidTotal)} บาท
+    บิลทั้งหมด: <b>${t.totalBills}</b> รายการ<br/>
+    ยอดสุทธิ (Net): <b>${money(t.totalNet)}</b> บาท<br/>
+    เงินสด: <b>${money(t.cashTotal)}</b> บาท • โอน: <b>${money(t.transferTotal)}</b> บาท • ค้างชำระ: <b>${money(t.unpaidTotal)}</b> บาท
   `;
 }
 
@@ -60,17 +62,21 @@ function renderTxList(txs) {
     return;
   }
 
-  const rows = txs.map(t => {
-    const when = t.createdAt?.toDate ? t.createdAt.toDate().toLocaleString("th-TH") : "-";
-    return `
-      <tr>
-        <td>${esc(when)}</td>
-        <td>${esc(t.customerName || "-")}</td>
-        <td>${esc(t.paymentMethod || "-")} / ${esc(t.paymentStatus || "-")}</td>
-        <td style="text-align:right;">${money(t.netAmount)}</td>
-      </tr>
-    `;
-  }).join("");
+  const rows = txs
+    .map((t) => {
+      const when = t.createdAt?.toDate ? t.createdAt.toDate().toLocaleString("th-TH") : "-";
+      const pay = `${t.paymentMethod || "-"} / ${t.paymentStatus || "-"}`;
+      return `
+        <tr>
+          <td>${esc(when)}</td>
+          <td>${esc(t.billNo || "-")}</td>
+          <td>${esc(t.customerName || "-")}</td>
+          <td>${esc(pay)}</td>
+          <td style="text-align:right;">${money(t.netAmount)}</td>
+        </tr>
+      `;
+    })
+    .join("");
 
   txListEl.innerHTML = `
     <div style="overflow:auto;">
@@ -78,6 +84,7 @@ function renderTxList(txs) {
         <thead>
           <tr>
             <th>เวลา</th>
+            <th>บิล</th>
             <th>ลูกค้า</th>
             <th>ชำระเงิน</th>
             <th style="text-align:right;">Net</th>
@@ -89,18 +96,32 @@ function renderTxList(txs) {
   `;
 }
 
-async function loadTxAndAggregate(branchId, businessDate) {
-  const { startTs, endTs } = dayRange(businessDate);
+// ✅ ฟังก์ชันนี้ “มีแค่อันเดียว” (ห้ามซ้ำ)
+async function loadTxAndAggregate(branchId, businessDateYMD) {
+  const { startTs, endTs } = dayRange(businessDateYMD);
 
-  // ✅ มาตรฐาน: transactions ต้องมี branchId
-  let q = db.collection("transactions")
-    .where("branchId", "==", branchId)
+  // รองรับข้อมูลเก่า: บางรายการอาจใช้ branchKey แทน branchId
+  const q1 = db.collection("transactions")
     .where("createdAt", ">=", startTs)
     .where("createdAt", "<", endTs)
-    .orderBy("createdAt", "asc");
+    .where("branchId", "==", branchId)
+    .orderBy("createdAt", "asc")
+    .get();
 
-  const snap = await q.get();
-  const txs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const q2 = db.collection("transactions")
+    .where("createdAt", ">=", startTs)
+    .where("createdAt", "<", endTs)
+    .where("branchKey", "==", branchId)
+    .orderBy("createdAt", "asc")
+    .get();
+
+  const [snap1, snap2] = await Promise.all([q1, q2]);
+
+  const map = new Map();
+  snap1.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  snap2.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+
+  const txs = Array.from(map.values());
 
   let totalBills = 0;
   let totalNet = 0;
@@ -108,8 +129,8 @@ async function loadTxAndAggregate(branchId, businessDate) {
   let transferTotal = 0;
   let unpaidTotal = 0;
 
-  txs.forEach(t => {
-    const net = n(t.netAmount); // ✅ 450 อยู่ตรงนี้
+  txs.forEach((t) => {
+    const net = n(t.netAmount);
     totalBills += 1;
     totalNet += net;
 
@@ -135,12 +156,16 @@ async function refresh() {
   txListEl.textContent = "กำลังโหลดรายการ...";
   setMsg(resultEl, "");
 
-  // 1) load tx
+  // 1) โหลดรายการ + สรุปยอด
   try {
     const { txs, totals } = await loadTxAndAggregate(branchId, businessDate);
     renderSummary(totals);
     renderTxList(txs);
 
+    // ✅ แสดง “ยอดสุทธิของวันนั้น” (readonly)
+    if (totalNetEl) totalNetEl.value = totals.totalNet;
+
+    // เติมค่ากล่องแก้ไขยอด
     amendTotalNetEl.value = totals.totalNet;
     amendCashEl.value = totals.cashTotal;
     amendTransferEl.value = totals.transferTotal;
@@ -151,7 +176,7 @@ async function refresh() {
     txListEl.innerHTML = `<span style="color:#b00020;">โหลดรายการไม่สำเร็จ: ${esc(e.message)}</span>`;
   }
 
-  // 2) check closed?
+  // 2) เช็คว่าปิดยอดแล้วหรือยัง
   try {
     const docId = closeDocId(branchId, businessDate);
     const ref = db.collection("daily_closes").doc(docId);
@@ -165,6 +190,7 @@ async function refresh() {
       const d = snap.data() || {};
       if (!closedByEl.value) closedByEl.value = d.closedBy || "";
       if (!noteEl.value) noteEl.value = d.note || "";
+      if (totalNetEl && !totalNetEl.value) totalNetEl.value = n(d.totalNet);
     } else {
       closeBtn.disabled = false;
       toggleAmendBtn.style.display = "none";
@@ -190,23 +216,26 @@ async function closeDay() {
     const { totals } = await loadTxAndAggregate(branchId, businessDate);
     const docId = closeDocId(branchId, businessDate);
 
-    await db.collection("daily_closes").doc(docId).set({
-      branchId,
-      businessDate,
+    await db.collection("daily_closes").doc(docId).set(
+      {
+        branchId,
+        businessDate,
 
-      totalBills: totals.totalBills,
-      totalNet: totals.totalNet,
-      cashTotal: totals.cashTotal,
-      transferTotal: totals.transferTotal,
-      unpaidTotal: totals.unpaidTotal,
+        totalBills: totals.totalBills,
+        totalNet: totals.totalNet,
+        cashTotal: totals.cashTotal,
+        transferTotal: totals.transferTotal,
+        unpaidTotal: totals.unpaidTotal,
 
-      // ✅ note เป็นข้อความเท่านั้น
-      note: noteText || "",
+        // ✅ note เป็น “ข้อความ” เท่านั้น และไม่บังคับ
+        note: noteText || "",
 
-      closedBy,
-      closedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+        closedBy,
+        closedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     setMsg(resultEl, "ปิดยอดสำเร็จ ✅", true);
     toggleAmendBtn.style.display = "inline-block";
@@ -240,6 +269,7 @@ async function saveAmendment() {
 
     const prev = snap.data() || {};
 
+    // ✅ เก็บประวัติใน subcollection
     await ref.collection("amendments").add({
       branchId,
       businessDate,
@@ -259,22 +289,29 @@ async function saveAmendment() {
       new_unpaidTotal: newUnpaid,
     });
 
-    await ref.set({
-      totalNet: newTotalNet,
-      cashTotal: newCash,
-      transferTotal: newTransfer,
-      unpaidTotal: newUnpaid,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    // ✅ อัปเดตยอดล่าสุดใน daily_closes
+    await ref.set(
+      {
+        totalNet: newTotalNet,
+        cashTotal: newCash,
+        transferTotal: newTransfer,
+        unpaidTotal: newUnpaid,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     setMsg(amendResultEl, "บันทึกการแก้ไขสำเร็จ ✅ (เก็บประวัติแล้ว)", true);
+
+    // อัปเดตหน้าจอ
     renderSummary({
       totalBills: n(prev.totalBills),
       totalNet: newTotalNet,
       cashTotal: newCash,
       transferTotal: newTransfer,
-      unpaidTotal: newUnpaid
+      unpaidTotal: newUnpaid,
     });
+    if (totalNetEl) totalNetEl.value = newTotalNet;
   } catch (e) {
     console.error(e);
     setMsg(amendResultEl, `บันทึกการแก้ไขไม่สำเร็จ: ${e.message}`, false);
@@ -291,63 +328,8 @@ document.addEventListener("DOMContentLoaded", () => {
   closeBtn.addEventListener("click", closeDay);
 
   toggleAmendBtn.addEventListener("click", () => {
-    amendBox.style.display = (amendBox.style.display === "none") ? "block" : "none";
+    amendBox.style.display = amendBox.style.display === "none" ? "block" : "none";
   });
 
   amendBtn.addEventListener("click", saveAmendment);
 });
-
-async function loadTxAndAggregate(branchId, businessDateYMD) {
-  const { startTs, endTs } = dayRangeTimestamps(businessDateYMD);
-
-  // ทำ 2 query: branchId และ branchKey (รองรับข้อมูลเก่า)
-  const q1 = db.collection("transactions")
-    .where("createdAt", ">=", startTs)
-    .where("createdAt", "<", endTs)
-    .where("branchId", "==", branchId)
-    .orderBy("createdAt", "asc")
-    .get();
-
-  const q2 = db.collection("transactions")
-    .where("createdAt", ">=", startTs)
-    .where("createdAt", "<", endTs)
-    .where("branchKey", "==", branchId) // บางคนเก็บเป็น "Samyan Mitrtown" ตรง ๆ
-    .orderBy("createdAt", "asc")
-    .get();
-
-  const [snap1, snap2] = await Promise.all([q1, q2]);
-
-  // merge + กันซ้ำด้วย id
-  const map = new Map();
-  snap1.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-  snap2.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-
-  const txs = Array.from(map.values());
-
-  let totalBills = 0;
-  let totalNet = 0;
-  let cashTotal = 0;
-  let transferTotal = 0;
-  let unpaidTotal = 0;
-
-  txs.forEach(t => {
-    const net = Number(t.netAmount || 0);
-    const status = String(t.paymentStatus || "").toLowerCase(); // paid/unpaid
-    const method = String(t.paymentMethod || "").toLowerCase(); // cash/transfer
-
-    totalBills += 1;
-    totalNet += net;
-
-    if (status === "paid") {
-      if (method === "cash") cashTotal += net;
-      else if (method === "transfer") transferTotal += net;
-    } else if (status === "unpaid") {
-      unpaidTotal += net;
-    }
-  });
-
-  return {
-    txs,
-    totals: { totalBills, totalNet, cashTotal, transferTotal, unpaidTotal }
-  };
-}
