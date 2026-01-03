@@ -1,3 +1,5 @@
+// js/firebase.js (compat)
+
 const firebaseConfig = {
   apiKey: "AIzaSyDq5PRGiGNIhJN0FnMw4AatI1svEra4lKY",
   authDomain: "cleanmate-staff.firebaseapp.com",
@@ -10,6 +12,6 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// ✅ global ที่ทุกไฟล์ใช้ร่วมกัน (ห้ามประกาศ const db ซ้ำในไฟล์อื่น)
+// ทำให้ทุกไฟล์เรียกใช้ร่วมกันได้
 window.db = firebase.firestore();
 window.storage = firebase.storage();
