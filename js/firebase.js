@@ -7,9 +7,9 @@ const firebaseConfig = {
   appId: "1:509361348896:web:8a051e970221cd98a87745",
   measurementId: "G-FH4QY1MQ9H"
 };
-// เริ่มต้น Firebase
+
 firebase.initializeApp(firebaseConfig);
 
-// เปิดใช้งานบริการที่เราจะใช้
-const db = firebase.firestore();
-const storage = firebase.storage();
+// ✅ ทำเป็น global ที่ทุกไฟล์ใช้ร่วมกัน
+window.db = firebase.firestore();
+window.storage = firebase.storage();
