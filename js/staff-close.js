@@ -1,5 +1,5 @@
 // js/staff-close.js (Firestore compat)
-const db = firebase.firestore();
+const db = window.db;
 
 // ---------- DOM ----------
 const branchEl = document.getElementById("branch");
