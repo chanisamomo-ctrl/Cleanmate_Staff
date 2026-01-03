@@ -296,3 +296,58 @@ document.addEventListener("DOMContentLoaded", () => {
 
   amendBtn.addEventListener("click", saveAmendment);
 });
+
+async function loadTxAndAggregate(branchId, businessDateYMD) {
+  const { startTs, endTs } = dayRangeTimestamps(businessDateYMD);
+
+  // ทำ 2 query: branchId และ branchKey (รองรับข้อมูลเก่า)
+  const q1 = db.collection("transactions")
+    .where("createdAt", ">=", startTs)
+    .where("createdAt", "<", endTs)
+    .where("branchId", "==", branchId)
+    .orderBy("createdAt", "asc")
+    .get();
+
+  const q2 = db.collection("transactions")
+    .where("createdAt", ">=", startTs)
+    .where("createdAt", "<", endTs)
+    .where("branchKey", "==", branchId) // บางคนเก็บเป็น "Samyan Mitrtown" ตรง ๆ
+    .orderBy("createdAt", "asc")
+    .get();
+
+  const [snap1, snap2] = await Promise.all([q1, q2]);
+
+  // merge + กันซ้ำด้วย id
+  const map = new Map();
+  snap1.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  snap2.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+
+  const txs = Array.from(map.values());
+
+  let totalBills = 0;
+  let totalNet = 0;
+  let cashTotal = 0;
+  let transferTotal = 0;
+  let unpaidTotal = 0;
+
+  txs.forEach(t => {
+    const net = Number(t.netAmount || 0);
+    const status = String(t.paymentStatus || "").toLowerCase(); // paid/unpaid
+    const method = String(t.paymentMethod || "").toLowerCase(); // cash/transfer
+
+    totalBills += 1;
+    totalNet += net;
+
+    if (status === "paid") {
+      if (method === "cash") cashTotal += net;
+      else if (method === "transfer") transferTotal += net;
+    } else if (status === "unpaid") {
+      unpaidTotal += net;
+    }
+  });
+
+  return {
+    txs,
+    totals: { totalBills, totalNet, cashTotal, transferTotal, unpaidTotal }
+  };
+}
