@@ -1,4 +1,4 @@
-// js/owner-dashboard.js  (Firestore compat)
+// js/owner-dashboard.js (Firestore compat)
 const db = window.db;
 
 const branchEl = document.getElementById("branch");
@@ -11,39 +11,21 @@ const kpiEl = document.getElementById("kpi");
 const listEl = document.getElementById("list");
 const amendmentsEl = document.getElementById("amendments");
 
-let lastRows = []; // cache for export
-
-function ymdToday() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+let lastRows = []; // cache export
 
 function setDefaultDates() {
-  const today = ymdToday();
+  const today = todayYMD();
   if (!fromEl.value) fromEl.value = today;
   if (!toEl.value) toEl.value = today;
 }
 
-function fmtMoney(n) {
-  const x = Number(n || 0);
-  return x.toLocaleString("th-TH", { maximumFractionDigits: 0 });
-}
-
-function safeText(s) {
-  return String(s ?? "").replace(/[<>]/g, "");
-}
-
 function renderDailyCloseRows(rows) {
   if (!rows.length) {
-    listEl.innerHTML = `<div class="small muted">ไม่พบข้อมูล</div>`;
     kpiEl.textContent = "—";
+    listEl.innerHTML = `<div class="small muted">ไม่พบข้อมูล</div>`;
     return;
   }
 
-  // KPI รวม
   const sumBills = rows.reduce((a, r) => a + Number(r.totalBills || 0), 0);
   const sumNet = rows.reduce((a, r) => a + Number(r.totalNet || 0), 0);
   const sumCash = rows.reduce((a, r) => a + Number(r.cashTotal || 0), 0);
@@ -51,10 +33,9 @@ function renderDailyCloseRows(rows) {
   const sumUnpaid = rows.reduce((a, r) => a + Number(r.unpaidTotal || 0), 0);
 
   kpiEl.innerHTML =
-    `รวม ${rows.length} วัน • บิล ${fmtMoney(sumBills)} • Net ${fmtMoney(sumNet)} • Cash ${fmtMoney(sumCash)} • Transfer ${fmtMoney(sumTransfer)} • Unpaid ${fmtMoney(sumUnpaid)}`;
+    `รวม ${rows.length} วัน • บิล ${money(sumBills)} • Net ${money(sumNet)} • Cash ${money(sumCash)} • Transfer ${money(sumTransfer)} • Unpaid ${money(sumUnpaid)}`;
 
-  // ตาราง
-  const html = `
+  listEl.innerHTML = `
     <div style="overflow:auto;">
       <table class="table">
         <thead>
@@ -73,22 +54,21 @@ function renderDailyCloseRows(rows) {
         <tbody>
           ${rows.map(r => `
             <tr>
-              <td>${safeText(r.businessDate)}</td>
-              <td>${safeText(r.branchId || r.branchKey || "-")}</td>
-              <td style="text-align:right;">${fmtMoney(r.totalBills)}</td>
-              <td style="text-align:right;">${fmtMoney(r.totalNet)}</td>
-              <td style="text-align:right;">${fmtMoney(r.cashTotal)}</td>
-              <td style="text-align:right;">${fmtMoney(r.transferTotal)}</td>
-              <td style="text-align:right;">${fmtMoney(r.unpaidTotal)}</td>
-              <td>${safeText(r.note)}</td>
-              <td>${safeText(r.closedBy)}</td>
+              <td>${esc(r.businessDate)}</td>
+              <td>${esc(r.branchId || "-")}</td>
+              <td style="text-align:right;">${money(r.totalBills)}</td>
+              <td style="text-align:right;">${money(r.totalNet)}</td>
+              <td style="text-align:right;">${money(r.cashTotal)}</td>
+              <td style="text-align:right;">${money(r.transferTotal)}</td>
+              <td style="text-align:right;">${money(r.unpaidTotal)}</td>
+              <td>${esc(r.note)}</td>
+              <td>${esc(r.closedBy)}</td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     </div>
   `;
-  listEl.innerHTML = html;
 }
 
 async function loadDailyCloses() {
@@ -105,16 +85,13 @@ async function loadDailyCloses() {
   }
 
   try {
-    // ✅ ใช้ field ให้ตรง index ที่คุณมี: branchId + businessDate (ASC)
     let q = db.collection("daily_closes")
       .where("businessDate", ">=", fromDate)
       .where("businessDate", "<=", toDate);
 
-    if (branch) {
-      q = q.where("branchId", "==", branch);
-    }
+    if (branch) q = q.where("branchId", "==", branch);
 
-    // ✅ ให้ตรงกับ index ที่เป็น businessDate ↑ (ASC)
+    // ให้ตรง index ที่ทำไว้ (ถ้าของคุณทำ businessDate ASC)
     q = q.orderBy("businessDate", "asc");
 
     const snap = await q.get();
@@ -122,37 +99,34 @@ async function loadDailyCloses() {
 
     lastRows = rows;
     renderDailyCloseRows(rows);
-  } catch (err) {
-    console.error(err);
-    listEl.innerHTML = `<div class="small" style="color:#b00020;">โหลดข้อมูลไม่สำเร็จ: ${safeText(err.message)}</div>`;
+  } catch (e) {
+    console.error(e);
+    listEl.innerHTML = `<div class="small" style="color:#b00020;">โหลดข้อมูลไม่สำเร็จ: ${esc(e.message)}</div>`;
   }
 }
 
 async function loadAmendments() {
   amendmentsEl.textContent = "กำลังโหลด...";
   try {
-    // ถ้าคุณเก็บ amendments เป็น collection ที่ชื่อ "amendments" อยู่ที่ root
-    // ใช้ collection("amendments") ได้เลย
-    // แต่จาก index ของคุณเป็น "Collection group" -> มักใช้ collectionGroup
+    // amendments เก็บไว้ใน daily_closes/{docId}/amendments => ต้องใช้ collectionGroup
     const snap = await db.collectionGroup("amendments")
       .orderBy("amendedAt", "desc")
       .limit(50)
       .get();
 
     const rows = snap.docs.map(d => d.data());
-
     if (!rows.length) {
       amendmentsEl.textContent = "ไม่พบประวัติการแก้ไข";
       return;
     }
 
     amendmentsEl.innerHTML = rows.map(r => {
-      const when = r.amendedAt?.toDate ? r.amendedAt.toDate().toLocaleString("th-TH") : (r.amendedAt || "-");
-      return `• ${safeText(when)} — ${safeText(r.branchId || "-")} ${safeText(r.businessDate || "-")} — ${safeText(r.reason || r.note || "")}`;
+      const when = r.amendedAt?.toDate ? r.amendedAt.toDate().toLocaleString("th-TH") : "-";
+      return `• ${esc(when)} — ${esc(r.branchId)} ${esc(r.businessDate)} — ${esc(r.reason)}`;
     }).join("<br/>");
-  } catch (err) {
-    console.error(err);
-    amendmentsEl.innerHTML = `<span style="color:#b00020;">โหลดประวัติการแก้ไขไม่สำเร็จ: ${safeText(err.message)}</span>`;
+  } catch (e) {
+    console.error(e);
+    amendmentsEl.innerHTML = `<span style="color:#b00020;">โหลดประวัติการแก้ไขไม่สำเร็จ: ${esc(e.message)}</span>`;
   }
 }
 
