@@ -10,6 +10,6 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// ✅ ทำเป็น global ที่ทุกไฟล์ใช้ร่วมกัน
+// ✅ global ที่ทุกไฟล์ใช้ร่วมกัน (ห้ามประกาศ const db ซ้ำในไฟล์อื่น)
 window.db = firebase.firestore();
 window.storage = firebase.storage();
