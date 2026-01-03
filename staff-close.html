@@ -33,15 +33,26 @@
       </div>
 
       <div class="row" style="margin-top:10px;">
-        <div>
-          <label>ผู้ปิดยอด (ใส่ชื่อพนักงาน)</label>
-          <input id="closedBy" placeholder="เช่น Momo" />
-        </div>
-        <div>
-          <label>หมายเหตุ</label>
-          <input id="note" placeholder="เช่น เงินสด/โอน ตรวจแล้ว" />
-        </div>
-      </div>
+  <div>
+    <label>ผู้ปิดยอด (ใส่ชื่อพนักงาน)</label>
+    <input id="closedBy" placeholder="เช่น Momo" />
+  </div>
+
+  <div>
+    <label>ยอดสุทธิวันนี้ (บาท)</label>
+    <input id="totalNet" type="number" readonly />
+    <div class="small muted">* ระบบคำนวณจากบิลของวันนั้นอัตโนมัติ</div>
+  </div>
+</div>
+
+<div class="row" style="margin-top:10px;">
+  <div style="grid-column: 1 / -1;">
+    <label>หมายเหตุ (ถ้ามี)</label>
+    <input id="note" placeholder="เช่น มีการแก้ไขบิล #A001 (ลดราคา), ยกเลิกบิล #A002 ฯลฯ" />
+    <div class="small muted">* ไม่บังคับ ถ้าไม่มีไม่ต้องกรอก</div>
+  </div>
+</div>
+
 
       <button class="btn secondary" id="closeBtn" style="margin-top:12px;">🔒 ปิดยอดวันนี้</button>
       <p class="small" id="result"></p>
