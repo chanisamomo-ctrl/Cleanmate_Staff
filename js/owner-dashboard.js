@@ -1,5 +1,5 @@
 // js/owner-dashboard.js  (Firestore compat)
-const db = firebase.firestore();
+const db = window.db;
 
 const branchEl = document.getElementById("branch");
 const fromEl = document.getElementById("fromDate");
